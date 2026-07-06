@@ -1,0 +1,80 @@
+{
+  "mock-000000000000000000000001": {
+    "_id": "mock-000000000000000000000001",
+    "userId": "mock-000000000000000000000001",
+    "title": "Portfolio de Test User",
+    "slug": "test-user",
+    "bio": "",
+    "theme": "light",
+    "primaryColor": "#6366f1",
+    "isPublished": false,
+    "views": 0,
+    "createdAt": "2026-06-13T22:13:20.588Z",
+    "updatedAt": "2026-06-13T22:13:20.588Z"
+  },
+  "mock-000000000000000000000002": {
+    "_id": "mock-000000000000000000000002",
+    "userId": "mock-000000000000000000000005",
+    "title": "Portfolio de omayma",
+    "slug": "omayma",
+    "bio": "",
+    "theme": "light",
+    "primaryColor": "#6366f1",
+    "isPublished": false,
+    "views": 0,
+    "createdAt": "2026-06-15T08:26:36.958Z",
+    "updatedAt": "2026-06-15T08:26:36.958Z"
+  },
+  "mock-000000000000000000000003": {
+    "_id": "mock-000000000000000000000003",
+    "userId": "mock-000000000000000000000006",
+    "title": "Portfolio de Test User",
+    "slug": "test-user-1",
+    "bio": "",
+    "theme": "light",
+    "primaryColor": "#6366f1",
+    "isPublished": false,
+    "views": 0,
+    "createdAt": "2026-06-28T18:37:12.621Z",
+    "updatedAt": "2026-06-28T18:37:12.621Z"
+  },
+  "mock-000000000000000000000004": {
+    "_id": "mock-000000000000000000000004",
+    "userId": "mock-000000000000000000000007",
+    "title": "Portfolio de Omayma Esprit",
+    "slug": "omayma-esprit",
+    "bio": "",
+    "theme": "light",
+    "primaryColor": "#6D28FF",
+    "isPublished": false,
+    "views": 0,
+    "createdAt": "2026-07-02T15:34:00.568Z",
+    "updatedAt": "2026-07-02T15:34:00.568Z"
+  },
+  "mock-000000000000000000000005": {
+    "_id": "mock-000000000000000000000005",
+    "userId": "mock-000000000000000000000008",
+    "title": "Portfolio de Stage Omayma",
+    "slug": "stage-omayma",
+    "bio": "",
+    "theme": "light",
+    "primaryColor": "#6D28FF",
+    "isPublished": false,
+    "views": 0,
+    "createdAt": "2026-07-06T10:08:40.183Z",
+    "updatedAt": "2026-07-06T10:08:40.183Z"
+  },
+  "mock-000000000000000000000006": {
+    "_id": "mock-000000000000000000000006",
+    "userId": "mock-000000000000000000000009",
+    "title": "Portfolio de AMIRA HOUAMDI",
+    "slug": "amira-houamdi",
+    "bio": "",
+    "theme": "light",
+    "primaryColor": "#6D28FF",
+    "isPublished": false,
+    "views": 0,
+    "createdAt": "2026-07-06T10:08:59.038Z",
+    "updatedAt": "2026-07-06T10:08:59.038Z"
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "mock-000000000000000000000001": {
+    "_id": "mock-000000000000000000000001",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "Correction examen S1 Janvier 2022 (1).pdf",
+    "documentType": "application/pdf",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782392999861-Correction examen S1 Janvier 2022 (1).pdf",
+    "fileSize": 276768,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:09:59.864Z",
+    "updatedAt": "2026-06-25T13:09:59.864Z"
+  },
+  "mock-000000000000000000000002": {
+    "_id": "mock-000000000000000000000002",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "PROSIT 1 PL SQL (4).docx",
+    "documentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782393009979-PROSIT 1 PL SQL (4).docx",
+    "fileSize": 13305,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:10:09.982Z",
+    "updatedAt": "2026-06-25T13:10:09.982Z"
+  },
+  "mock-000000000000000000000003": {
+    "_id": "mock-000000000000000000000003",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "QCM-par-chapitre-avec-correction-1.pdf",
+    "documentType": "application/pdf",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782393014777-QCM-par-chapitre-avec-correction-1.pdf",
+    "fileSize": 556962,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:10:14.782Z",
+    "updatedAt": "2026-06-25T13:10:14.782Z"
+  },
+  "mock-000000000000000000000004": {
+    "_id": "mock-000000000000000000000004",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "PROSIT 1 PL SQL (4).docx",
+    "documentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782395268405-PROSIT 1 PL SQL (4).docx",
+    "fileSize": 13305,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:47:48.409Z",
+    "updatedAt": "2026-06-25T13:47:48.409Z"
+  },
+  "mock-000000000000000000000005": {
+    "_id": "mock-000000000000000000000005",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "CCCF3_Introductions_Conclusions (1).docx",
+    "documentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782395289519-CCCF3_Introductions_Conclusions (1).docx",
+    "fileSize": 19328,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:48:09.522Z",
+    "updatedAt": "2026-06-25T13:48:09.522Z"
+  },
+  "mock-000000000000000000000006": {
+    "_id": "mock-000000000000000000000006",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "PROSIT 1 PL SQL (2).docx",
+    "documentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782395324236-PROSIT 1 PL SQL (2).docx",
+    "fileSize": 13305,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:48:44.239Z",
+    "updatedAt": "2026-06-25T13:48:44.239Z"
+  },
+  "mock-000000000000000000000007": {
+    "_id": "mock-000000000000000000000007",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "ChatGPT Image 25 juin 2026, 12_45_38.png",
+    "documentType": "image/png",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782395338212-ChatGPT Image 25 juin 2026, 12_45_38.png",
+    "fileSize": 1393106,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:48:58.217Z",
+    "updatedAt": "2026-06-25T13:48:58.217Z"
+  },
+  "mock-000000000000000000000008": {
+    "_id": "mock-000000000000000000000008",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "Evaluation-Criteria.docx",
+    "documentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782395350644-Evaluation-Criteria.docx",
+    "fileSize": 21000,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T13:49:10.648Z",
+    "updatedAt": "2026-06-25T13:49:10.648Z"
+  },
+  "mock-000000000000000000000009": {
+    "_id": "mock-000000000000000000000009",
+    "clientId": "mock-000000000000000000000005",
+    "documentName": "Non confirmé 634678.crdownload",
+    "documentType": "application/octet-stream",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000005/1782397201967-Non confirmé 634678.crdownload",
+    "fileSize": 120977848,
+    "uploadedBy": "6a3509d686a1849fb9d99463",
+    "createdAt": "2026-06-25T14:20:02.102Z",
+    "updatedAt": "2026-06-25T14:20:02.102Z"
+  },
+  "mock-000000000000000000000010": {
+    "_id": "mock-000000000000000000000010",
+    "clientId": "mock-000000000000000000000003",
+    "documentName": "🎓 Titre du projet.docx",
+    "documentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "fileUrl": "/uploads/clients/mock-000000000000000000000003/1782821021985-🎓 Titre du projet.docx",
+    "fileSize": 22516,
+    "uploadedBy": "mock-000000000000000000000005",
+    "createdAt": "2026-06-30T12:03:41.989Z",
+    "updatedAt": "2026-06-30T12:03:41.989Z"
+  }
+}

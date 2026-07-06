@@ -1,0 +1,62 @@
+{
+  "mock-000000000000000000000001": {
+    "_id": "mock-000000000000000000000001",
+    "clientId": "mock-000000000000000000000005",
+    "title": "Appeler le client",
+    "description": "Appeler le client demain",
+    "reminderDate": "2026-06-26T13:42:00",
+    "priority": "Haute",
+    "status": "En attente",
+    "createdAt": "2026-06-25T14:42:34.162Z",
+    "updatedAt": "2026-06-25T14:42:34.162Z"
+  },
+  "mock-000000000000000000000002": {
+    "_id": "mock-000000000000000000000002",
+    "clientId": "mock-000000000000000000000005",
+    "title": "terminer le metier de map",
+    "description": "urgetnt pour aujourdhui",
+    "reminderDate": "2026-06-25T17:44:00",
+    "priority": "Haute",
+    "status": "Terminé",
+    "createdAt": "2026-06-25T14:44:58.042Z",
+    "updatedAt": "2026-06-25T15:23:35.958Z",
+    "reminderTime": "17:44"
+  },
+  "mock-000000000000000000000003": {
+    "_id": "mock-000000000000000000000003",
+    "clientId": "mock-000000000000000000000003",
+    "title": "faire le test unitaires et verifiation",
+    "description": "obigatiore de faire la verification",
+    "reminderDate": "2026-07-01T14:08:00",
+    "priority": "Haute",
+    "status": "Terminé",
+    "createdAt": "2026-06-30T12:08:20.379Z",
+    "updatedAt": "2026-06-30T12:14:12.793Z",
+    "reminderTime": "14:08"
+  },
+  "mock-000000000000000000000004": {
+    "_id": "mock-000000000000000000000004",
+    "clientId": "mock-000000000000000000000003",
+    "title": "validations ",
+    "description": "faire la validation et les test unitaires ",
+    "reminderDate": "2026-06-10T00:00:00",
+    "priority": "Normale",
+    "status": "En attente",
+    "createdAt": "2026-06-30T12:28:20.388Z",
+    "updatedAt": "2026-06-30T12:28:20.388Z"
+  },
+  "mock-000000000000000000000005": {
+    "_id": "mock-000000000000000000000005",
+    "clientId": "mock-000000000000000000000003",
+    "title": "tester le projet ",
+    "description": "faire  validation avec le chefe de projet ",
+    "reminderDate": "2026-06-30T13:45:00",
+    "priority": "Normale",
+    "status": "En attente",
+    "createdAt": "2026-06-30T12:39:37.666Z",
+    "updatedAt": "2026-06-30T12:40:25.750Z",
+    "reminderTime": "13:45",
+    "endTime": "23:59",
+    "endDate": "2026-07-02T23:59:00"
+  }
+}

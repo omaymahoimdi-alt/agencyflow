@@ -1,0 +1,47 @@
+{
+  "mock-000000000000000000000001": {
+    "_id": "mock-000000000000000000000001",
+    "email": "esprithoimdi@gmail.com",
+    "token": "b922b2ecece2517fdcc08083d7c8e5d8f9f9de0ab3dc24a204c284a914b1e38d",
+    "nom": "bekri",
+    "prenom": "chahd ",
+    "role": "Développeur",
+    "equipe": "Développement",
+    "invitePar": "Omayma Hoimdi",
+    "statut": "En attente",
+    "expiration": "2026-07-13T09:33:39.798Z",
+    "createdAt": "2026-07-06T09:33:39.817Z",
+    "updatedAt": "2026-07-06T09:33:39.817Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000002": {
+    "_id": "mock-000000000000000000000002",
+    "email": "omaymahoimdi@gmail.com",
+    "token": "d305196aa3cdf2bf02524f1f4ecd7ba58998c9891b61024b2ec22cb1f496755e",
+    "nom": "baaroun",
+    "prenom": "mohamed",
+    "role": "Développeur",
+    "equipe": "Gestion de projet",
+    "invitePar": "Omayma Hoimdi",
+    "statut": "En attente",
+    "expiration": "2026-07-13T09:37:28.406Z",
+    "createdAt": "2026-07-06T09:37:28.428Z",
+    "updatedAt": "2026-07-06T09:37:28.428Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000003": {
+    "_id": "mock-000000000000000000000003",
+    "email": "esprithoimdi@gmail.com",
+    "token": "3039d33d568c6163d636fc525cb44fa7df12e0949c1863b75d56a46f2739fcc8",
+    "nom": "bekri",
+    "prenom": "chahd ",
+    "role": "Designer",
+    "equipe": "Design",
+    "invitePar": "Omayma Hoimdi",
+    "statut": "En attente",
+    "expiration": "2026-07-13T10:04:43.704Z",
+    "createdAt": "2026-07-06T10:04:43.729Z",
+    "updatedAt": "2026-07-06T10:04:43.729Z",
+    "userId": "mock-000000000000000000000001"
+  }
+}

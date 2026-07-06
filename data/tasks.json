@@ -1,0 +1,128 @@
+{
+  "mock-000000000000000000000001": {
+    "_id": "mock-000000000000000000000001",
+    "titre": "Développer la page d'accueil",
+    "description": "Créer le design et intégrer la page d'accueil du site web avec HTML/CSS responsive.",
+    "statut": "Bloquée",
+    "priorite": "Urgente",
+    "dateDebut": "2026-06-23",
+    "dateFin": "2026-06-24",
+    "projetId": "mock-000000000000000000000001",
+    "employeId": "mock-000000000000000000000001",
+    "createdAt": "2026-06-13T23:47:31.958Z",
+    "updatedAt": "2026-06-25T08:50:31.250Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000002": {
+    "_id": "mock-000000000000000000000002",
+    "titre": "Appeler les prospects clients",
+    "description": "Contacter par téléphone les 20 prospects identifiés ce mois pour présenter nos offres de services.",
+    "statut": "En cours",
+    "priorite": "Haute",
+    "dateDebut": "2026-06-26",
+    "dateFin": "2026-06-30",
+    "projetId": "mock-000000000000000000000001",
+    "employeId": "mock-000000000000000000000002",
+    "createdAt": "2026-06-13T23:53:42.643Z",
+    "updatedAt": "2026-06-13T23:53:42.643Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000004": {
+    "_id": "mock-000000000000000000000004",
+    "titre": "Analyse des besoins",
+    "description": "Collecter et analyser les besoins fonctionnels et non fonctionnels du client afin de définir les spécifications du projet.",
+    "statut": "En cours",
+    "priorite": "Faible",
+    "dateDebut": "2026-06-18",
+    "dateFin": "2026-07-05",
+    "projetId": "mock-000000000000000000000009",
+    "employeId": "mock-000000000000000000000004",
+    "createdAt": "2026-06-27T23:56:15.115Z",
+    "updatedAt": "2026-06-30T13:18:45.766Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000005": {
+    "_id": "mock-000000000000000000000005",
+    "titre": "Conception UI/UX",
+    "description": "Créer les maquettes et le design des différentes pages de l'application.",
+    "statut": "Terminée",
+    "priorite": "Haute",
+    "dateDebut": "2026-06-17",
+    "dateFin": "2026-06-12",
+    "projetId": "mock-000000000000000000000009",
+    "employeId": "mock-000000000000000000000004",
+    "createdAt": "2026-06-27T23:56:41.889Z",
+    "updatedAt": "2026-07-01T09:20:34.546Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000006": {
+    "_id": "mock-000000000000000000000006",
+    "titre": "corirger  les test unitaires ",
+    "description": "validation de tout les test ",
+    "statut": "À faire",
+    "priorite": "Haute",
+    "dateDebut": "2026-06-17",
+    "dateFin": "2026-06-19",
+    "projetId": "mock-000000000000000000000009",
+    "employeId": "mock-000000000000000000000004",
+    "createdAt": "2026-06-30T13:16:13.323Z",
+    "updatedAt": "2026-06-30T13:17:26.440Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000008": {
+    "_id": "mock-000000000000000000000008",
+    "titre": "validation des cruds ",
+    "description": "touts les tables avec controlrs de saisie ",
+    "statut": "En cours",
+    "priorite": "Moyenne",
+    "dateDebut": "2026-06-30",
+    "dateFin": "2026-06-30",
+    "projetId": "mock-000000000000000000000009",
+    "employeId": "mock-000000000000000000000004",
+    "createdAt": "2026-06-30T13:25:57.081Z",
+    "updatedAt": "2026-06-30T13:27:37.114Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000013": {
+    "_id": "mock-000000000000000000000013",
+    "titre": "correct all the bugs for login ",
+    "description": "bbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "statut": "En cours",
+    "priorite": "Haute",
+    "dateDebut": "2026-07-09",
+    "dateFin": "2026-07-25",
+    "projetId": {
+      "_id": "mock-000000000000000000000009",
+      "titre": "Application Mobile Santé"
+    },
+    "employeId": {
+      "_id": "mock-000000000000000000000004",
+      "nom": "hoimdi",
+      "prenom": "omayma"
+    },
+    "createdAt": "2026-07-01T14:27:43.005Z",
+    "updatedAt": "2026-07-01T14:27:43.005Z",
+    "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000014": {
+    "_id": "mock-000000000000000000000014",
+    "titre": "corret all the bygs for loginn ",
+    "description": "vvvvvvvvvvvvvvvvvvvvvvv",
+    "statut": "Bloquée",
+    "priorite": "Haute",
+    "dateDebut": "2026-07-15",
+    "dateFin": "2026-07-31",
+    "projetId": {
+      "_id": "mock-000000000000000000000009",
+      "titre": "Application Mobile Santé"
+    },
+    "employeId": {
+      "_id": "mock-000000000000000000000004",
+      "nom": "hoimdi",
+      "prenom": "omayma"
+    },
+    "createdAt": "2026-07-01T14:44:16.843Z",
+    "updatedAt": "2026-07-01T14:44:16.843Z",
+    "userId": "mock-000000000000000000000001"
+  }
+}
