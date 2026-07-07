@@ -63,5 +63,18 @@
     "createdAt": "2026-06-30T11:58:43.415Z",
     "updatedAt": "2026-06-30T11:58:43.415Z",
     "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000014": {
+    "_id": "mock-000000000000000000000014",
+    "nomSociete": "blueweb",
+    "responsable": " Mr anouer maiz",
+    "email": "omayma.hoimdi@esprit.tn",
+    "telephone": "24241670",
+    "adresse": "omayma",
+    "secteurActivite": "Informatique",
+    "dateCreation": "2026-07-07T09:00:22.085Z",
+    "userId": "112639670839714825135",
+    "createdAt": "2026-07-07T09:00:22.085Z",
+    "updatedAt": "2026-07-07T09:00:22.085Z"
   }
 }

@@ -17,7 +17,7 @@ import {
   Bot,
   Trash2,
 } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
 const links = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -33,6 +33,11 @@ const links = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [profileOpen, setProfileOpen] = useState(false);
+  const { data: session } = useSession();
+  const user = session?.user;
+  const displayName = user?.name || user?.email || "Utilisateur";
+  const initials = displayName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+  const userRole = (user as any)?.role || "Membre";
 
   return (
     <aside className="sidebar fixed left-0 top-0 z-20 hidden h-screen w-72 border-r border-slate-800 bg-slate-950 text-white lg:flex flex-col">
@@ -85,11 +90,11 @@ export default function Sidebar() {
           className="flex w-full items-center gap-3 px-5 py-4 transition hover:bg-slate-800/50"
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/20">
-            OH
+            {initials}
           </div>
           <div className="flex-1 text-left min-w-0">
-            <p className="text-sm font-semibold text-white truncate">Omayma Hoimdi</p>
-            <p className="text-xs text-slate-400 truncate">Cheffe de projet</p>
+            <p className="text-sm font-semibold text-white truncate">{displayName}</p>
+            <p className="text-xs text-slate-400 truncate">{userRole}</p>
           </div>
           <ChevronDown size={15} className={`text-slate-500 transition-transform ${profileOpen ? "rotate-180" : ""}`} />
         </button>

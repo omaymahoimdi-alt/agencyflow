@@ -149,6 +149,7 @@ interface TeamUser {
   telephone?: string;
   avatar?: string;
   dateEmbauche?: string;
+  userId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1309,10 +1310,11 @@ export const MockTask = {
 
 // Team operations
 export const MockTeam = {
-  find: async () => {
+  find: async (userId?: string) => {
     const team = getTeam();
-    // Map avatar to photo for frontend compatibility
-    return Object.values(team).map(t => ({
+    const all = Object.values(team);
+    const filtered = userId ? all.filter(t => !t.userId || t.userId === userId) : all;
+    return filtered.map(t => ({
       ...t,
       photo: t.avatar || undefined,
     })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -1338,6 +1340,7 @@ export const MockTeam = {
     avatar?: string;
     photo?: string;
     dateEmbauche?: string;
+    userId?: string;
   }) => {
     const _id = generateId("teamId");
     const now = new Date();
@@ -1351,6 +1354,7 @@ export const MockTeam = {
       telephone: teamData.telephone,
       avatar: teamData.avatar || teamData.photo,
       dateEmbauche: teamData.dateEmbauche,
+      userId: teamData.userId,
       createdAt: now,
       updatedAt: now,
     };
@@ -2030,6 +2034,13 @@ async function createUserAndTeamMember(nom: string, prenom: string, email: strin
   }
 }
 
+// Find the first admin user to own existing/seed data
+function findAdminUserId(): string | null {
+  const team = getTeam();
+  const admin = Object.values(team).find((t: any) => t.role === "Admin") || Object.values(team)[0];
+  return admin?._id || null;
+}
+
 // Initialize with a test user (optional)
 async function initMockDB() {
   const testPassword = await hash("password123", 10);
@@ -2062,12 +2073,8 @@ async function initMockDB() {
 }
 
 async function migrateOrphanData() {
-  // Find the first admin user to own existing data
-  const team = getTeam();
-  const adminUser = Object.values(team).find((t: any) => t.role === "Admin") || Object.values(team)[0];
-  if (!adminUser) return;
-  
-  const adminId = adminUser._id;
+  const adminId = findAdminUserId();
+  if (!adminId) return;
   
   // Migrate clients
   const clients = getClients();
@@ -2123,6 +2130,17 @@ async function migrateOrphanData() {
     }
   }
   if (invChanged) setInvitations(invitations);
+  
+  // Migrate team members (assign to admin)
+  const allTeam = getTeam();
+  let teamChanged = false;
+  for (const t of Object.values(allTeam)) {
+    if (!(t as any).userId) {
+      (t as any).userId = adminId;
+      teamChanged = true;
+    }
+  }
+  if (teamChanged) setTeam(allTeam);
 }
 
 // Initialize mock DB

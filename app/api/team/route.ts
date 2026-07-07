@@ -40,10 +40,10 @@ export async function GET() {
     let team = [];
     try {
       await connectDB();
-      team = await User.find().select("-password").sort({ createdAt: -1 });
+      team = await User.find({ userId: session.user.id }).select("-password").sort({ createdAt: -1 });
     } catch (dbError) {
       console.log("MongoDB not available, using mock DB for team");
-      team = await MockTeam.find();
+      team = await MockTeam.find(session.user.id);
     }
     return NextResponse.json(team);
   } catch (error) {
@@ -72,13 +72,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: "Email déjà utilisé" }, { status: 409 });
       }
       const hashedPassword = await hash(body.password, 12);
-      const dbUser = await User.create({ ...body, photo: body.photo, avatar: body.photo });
+      const dbUser = await User.create({ ...body, userId: session.user.id, photo: body.photo, avatar: body.photo });
       const { password: _, ...userWithoutPassword } = dbUser.toObject();
       user = userWithoutPassword;
     } catch (dbError) {
       console.log("MongoDB not available, using mock DB to create team member");
       const hashedPassword = await hash(body.password, 12);
-      user = await MockTeam.create({ ...body, password: hashedPassword, photo: body.photo, avatar: body.photo });
+      user = await MockTeam.create({ ...body, password: hashedPassword, photo: body.photo, avatar: body.photo, userId: session.user.id });
     }
     return NextResponse.json(user, { status: 201 });
   } catch (error) {

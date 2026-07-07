@@ -144,5 +144,20 @@
     "createdAt": "2026-07-01T14:52:14.621Z",
     "updatedAt": "2026-07-01T14:52:14.621Z",
     "userId": "mock-000000000000000000000001"
+  },
+  "mock-000000000000000000000018": {
+    "_id": "mock-000000000000000000000018",
+    "titre": "Développement d'une plateforme E-commerce",
+    "description": "Création d'une plateforme e-commerce moderne permettant aux clients de consulter les produits, passer des commandes, effectuer des paiements en ligne et suivre leurs livraisons. Le projet inclut également un tableau de bord d'administration pour gérer les produits, les commandes et les utilisateurs.",
+    "dateDebut": "2026-07-07T00:00:00.000Z",
+    "dateFin": "2026-07-15T00:00:00.000Z",
+    "budget": 200,
+    "statut": "En cours",
+    "priorite": "Moyenne",
+    "clientId": "mock-000000000000000000000014",
+    "chefProjet": "Jane Smith",
+    "userId": "112639670839714825135",
+    "createdAt": "2026-07-07T09:03:31.823Z",
+    "updatedAt": "2026-07-07T09:03:31.823Z"
   }
 }
