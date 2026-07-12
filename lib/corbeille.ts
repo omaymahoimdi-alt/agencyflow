@@ -4,46 +4,54 @@ export interface CorbeilleItem {
   id: string;
   type: "Projet" | "Tâche" | "Client" | "Membre" | "Fichier";
   nom: string;
-  supprimePar: { nom: string; fonction: string; avatar: string };
+  supprimePar: { nom: string; email: string; fonction: string; avatar: string };
   supprimeLe: string;
   supprimeDefinitivementLe: string;
   sourceData?: any;
   meta?: Record<string, string>;
 }
 
-const STORAGE_KEY = "af_corbeille";
-
-export function getCorbeilleItems(): CorbeilleItem[] {
-  if (typeof window === "undefined") return [];
+export async function getCorbeilleItems(): Promise<CorbeilleItem[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const res = await fetch("/api/corbeille");
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   } catch {
     return [];
   }
 }
 
-export function saveCorbeilleItems(items: CorbeilleItem[]) {
+export async function addToCorbeille(item: CorbeilleItem): Promise<boolean> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {}
+    const res = await fetch("/api/corbeille", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
-export function addToCorbeille(item: CorbeilleItem) {
-  const items = getCorbeilleItems();
-  items.unshift(item);
-  saveCorbeilleItems(items);
+export async function removeFromCorbeille(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/corbeille/${id}`, { method: "DELETE" });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
-export function removeFromCorbeille(id: string): CorbeilleItem | undefined {
-  const items = getCorbeilleItems();
-  const found = items.find((i) => i.id === id);
-  saveCorbeilleItems(items.filter((i) => i.id !== id));
-  return found;
-}
-
-export function clearCorbeille() {
-  saveCorbeilleItems([]);
+export async function clearCorbeille(): Promise<boolean> {
+  try {
+    const items = await getCorbeilleItems();
+    await Promise.all(items.map(i => removeFromCorbeille(i.id)));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- Restore helpers ---
@@ -54,72 +62,19 @@ export async function restoreItem(item: CorbeilleItem): Promise<boolean> {
       return restoreMembre(item);
     case "Fichier":
       return restoreFichier(item);
-    case "Projet":
-      return restoreProjet(item);
-    case "Tâche":
-      return restoreTache(item);
-    case "Client":
-      return restoreClient(item);
     default:
-      return true;
+      return restoreViaApi(item);
   }
 }
 
-function restoreMembre(item: CorbeilleItem): boolean {
+async function restoreViaApi(item: CorbeilleItem): Promise<boolean> {
   try {
-    const raw = localStorage.getItem("af_team_members");
-    const members = raw ? JSON.parse(raw) : [];
-    if (item.sourceData) {
-      members.push(item.sourceData);
-    }
-    localStorage.setItem("af_team_members", JSON.stringify(members));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function restoreFichier(item: CorbeilleItem): boolean {
-  try {
-    const projectId = item.meta?.projectId;
-    const folderId = item.meta?.folderId;
-    if (!projectId || !folderId || !item.sourceData) return false;
-    const raw = localStorage.getItem(`agencyflow_folders_${projectId}`);
-    const folders = raw ? JSON.parse(raw) : [];
-    const target = folders.find((f: any) => f.id === folderId);
-    if (target) {
-      target.files.push(item.sourceData);
-    } else {
-      folders.push({ id: folderId, name: item.meta?.folderName || "Restauré", files: [item.sourceData] });
-    }
-    localStorage.setItem(`agencyflow_folders_${projectId}`, JSON.stringify(folders));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function extractApiData(item: CorbeilleItem): any {
-  if (!item.sourceData) return {};
-  const { _id, id, ...rest } = item.sourceData;
-  // Normalize projetId from object { _id, titre } to plain string
-  if (rest.projetId && typeof rest.projetId === "object") {
-    rest.projetId = rest.projetId._id || rest.projetId.id;
-  }
-  // Normalize employeId from object { _id, nom, prenom } to plain string
-  if (rest.employeId && typeof rest.employeId === "object") {
-    rest.employeId = rest.employeId._id || rest.employeId.id;
-  }
-  return rest;
-}
-
-async function restoreProjet(item: CorbeilleItem): Promise<boolean> {
-  try {
-    const body = extractApiData(item);
-    const res = await fetch("/api/projects", {
+    if (!item.sourceData) return false;
+    const { _id, id, ...data } = item.sourceData;
+    const res = await fetch("/api/restore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ type: item.type, data }),
     });
     return res.ok;
   } catch {
@@ -127,13 +82,14 @@ async function restoreProjet(item: CorbeilleItem): Promise<boolean> {
   }
 }
 
-async function restoreTache(item: CorbeilleItem): Promise<boolean> {
+async function restoreMembre(item: CorbeilleItem): Promise<boolean> {
   try {
-    const body = extractApiData(item);
-    const res = await fetch("/api/tasks", {
+    if (!item.sourceData) return false;
+    const { _id, id, ...data } = item.sourceData;
+    const res = await fetch("/api/restore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ type: "Membre", data }),
     });
     return res.ok;
   } catch {
@@ -141,13 +97,17 @@ async function restoreTache(item: CorbeilleItem): Promise<boolean> {
   }
 }
 
-async function restoreClient(item: CorbeilleItem): Promise<boolean> {
+async function restoreFichier(item: CorbeilleItem): Promise<boolean> {
   try {
-    const body = extractApiData(item);
-    const res = await fetch("/api/clients", {
+    if (!item.sourceData) return false;
+    const res = await fetch("/api/restore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        type: "Fichier",
+        data: item.sourceData,
+        meta: item.meta,
+      }),
     });
     return res.ok;
   } catch {

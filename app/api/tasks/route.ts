@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
-import Task from "@/models/Task";
 import { MockTask } from "@/lib/mock-db";
+import { logActivity } from "@/lib/activity";
+import { createNotification } from "@/lib/notifications";
 
 const STATUTS = ["À faire", "En cours", "Terminée", "Bloquée"] as const;
 const PRIORITES = ["Faible", "Moyenne", "Haute", "Urgente"] as const;
@@ -29,24 +29,12 @@ const validateTaskServer = (data: any) => {
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const { searchParams } = new URL(request.url);
     const projetId = searchParams.get("projetId") || undefined;
-    let tasks;
-    try {
-      await connectDB();
-      const filter: any = { userId: session.user.id };
-      if (projetId) filter.projetId = projetId;
-      tasks = await Task.find(filter)
-        .populate("projetId", "titre")
-        .populate("employeId", "nom prenom")
-        .sort({ createdAt: -1 });
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB for tasks");
-      tasks = await MockTask.find({ projetId, userId: session.user.id });
-    }
+    const tasks = await MockTask.find({ projetId, workspaceId: session.user.workspaceId });
     return NextResponse.json(tasks);
   } catch (error) {
     console.error("Error fetching tasks:", error);
@@ -57,7 +45,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const body = await request.json();
@@ -68,26 +56,30 @@ export async function POST(request: Request) {
     }
     
     const { titre, description, statut, priorite, dateDebut, dateFin, projetId, employeId } = body;
-    let task;
-    try {
-      await connectDB();
-      console.log("Trying MongoDB...");
-      task = await Task.create({ titre, description, statut, priorite, dateDebut, dateFin, projetId, employeId, userId: session.user.id });
-      const populated = await task.populate([
-        { path: "projetId", select: "titre" },
-        { path: "employeId", select: "nom prenom" },
-      ]);
-      task = populated;
-    } catch (dbError) {
-      console.log("MongoDB failed, error:", dbError);
-      console.log("Using mock DB to create task");
-      try {
-        task = await MockTask.create({ titre, description, statut, priorite, dateDebut, dateFin, projetId, employeId, userId: session.user.id });
-        console.log("Mock task created successfully:", task);
-      } catch (mockError) {
-        console.error("Mock DB create failed:", mockError);
-        throw mockError;
-      }
+    const task = await MockTask.create({ titre, description, statut, priorite, dateDebut, dateFin, projetId, employeId, workspaceId: session.user.workspaceId });
+    await logActivity({
+      workspaceId: session.user.workspaceId,
+      userId: session.user.id,
+      userName: session.user.name || "",
+      userEmail: session.user.email || "",
+      entityType: "task",
+      entityId: task._id.toString(),
+      entityName: titre,
+      action: "created",
+    });
+    if (employeId && employeId !== session.user.id) {
+      await createNotification({
+        workspaceId: session.user.workspaceId,
+        userId: employeId,
+        type: "task_assigned",
+        title: `Nouvelle tâche : ${titre}`,
+        message: `${session.user.name || "Quelqu'un"} vous a assigné "${titre}"`,
+        link: `/dashboard/tasks/${task._id}`,
+        entityType: "task",
+        entityId: task._id.toString(),
+        fromUserId: session.user.id,
+        fromUserName: session.user.name || "",
+      });
     }
     return NextResponse.json(task, { status: 201 });
   } catch (error) {

@@ -12,7 +12,7 @@ const SettingsSchema = new Schema(
       enum: ["light", "dark"],
       default: "light",
     },
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true, index: true },
+    workspaceId: { type: Schema.Types.ObjectId, ref: "Workspace", required: true, unique: true, index: true },
   },
   { timestamps: true }
 );

@@ -7,7 +7,7 @@ import {
   AlertTriangle, Info,
 } from "lucide-react";
 import {
-  CorbeilleItem, getCorbeilleItems, saveCorbeilleItems,
+  CorbeilleItem, getCorbeilleItems,
   removeFromCorbeille, restoreItem, clearCorbeille,
 } from "@/lib/corbeille";
 
@@ -59,7 +59,7 @@ export default function CorbeillePage() {
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
-    setItems(getCorbeilleItems());
+    getCorbeilleItems().then(setItems);
   }, []);
 
   useEffect(() => {
@@ -68,9 +68,16 @@ export default function CorbeillePage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const persistAndSet = useCallback((newItems: CorbeilleItem[]) => {
+  const persistAndSet = useCallback(async (newItems: CorbeilleItem[]) => {
     setItems(newItems);
-    saveCorbeilleItems(newItems);
+    // remove all current, then re-add new ones is not efficient, but fine for rare bulk ops
+    for (const item of newItems) {
+      await fetch("/api/corbeille", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+    }
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -104,10 +111,10 @@ export default function CorbeillePage() {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
     const ok = await restoreItem(item);
-    removeFromCorbeille(itemId);
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-    setSelected((prev) => prev.filter((id) => id !== itemId));
     if (ok) {
+      await removeFromCorbeille(itemId);
+      setItems((prev) => prev.filter((i) => i.id !== itemId));
+      setSelected((prev) => prev.filter((id) => id !== itemId));
       setToast({ type: "success", message: `"${item.nom}" a été restauré avec succès.` });
     } else {
       setToast({ type: "error", message: `Impossible de restaurer "${item.nom}".` });
@@ -117,28 +124,33 @@ export default function CorbeillePage() {
   async function handleRestoreAll() {
     const allItems = items;
     let okCount = 0;
+    const toRemove: string[] = [];
     for (const item of allItems) {
       const ok = await restoreItem(item);
-      if (ok) okCount++;
+      if (ok) {
+        okCount++;
+        toRemove.push(item.id);
+      }
     }
-    persistAndSet([]);
+    await Promise.all(toRemove.map(id => removeFromCorbeille(id)));
+    setItems((prev) => prev.filter((i) => !toRemove.includes(i.id)));
     setSelected([]);
     setToast({ type: "success", message: `${okCount}/${allItems.length} élément(s) restauré(s) avec succès.` });
   }
 
-  function handlePermanentDelete(itemId: string) {
+  async function handlePermanentDelete(itemId: string) {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
     if (!confirm(`Supprimer définitivement "${item.nom}" ? Cette action est irréversible.`)) return;
-    removeFromCorbeille(itemId);
+    await removeFromCorbeille(itemId);
     setItems((prev) => prev.filter((i) => i.id !== itemId));
     setSelected((prev) => prev.filter((id) => id !== itemId));
     setToast({ type: "success", message: `"${item.nom}" a été supprimé définitivement.` });
   }
 
-  function handleEmptyTrash() {
+  async function handleEmptyTrash() {
     if (!confirm("Vider la corbeille ? Tous les éléments seront définitivement supprimés.")) return;
-    clearCorbeille();
+    await clearCorbeille();
     setItems([]);
     setSelected([]);
     setToast({ type: "success", message: "Corbeille vidée avec succès." });
@@ -298,19 +310,27 @@ export default function CorbeillePage() {
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-2.5">
+                              {/* Avatar avec initiales du responsable */}
                               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-purple-100 text-xs font-bold text-violet-600 shadow-sm">
                                 {item.supprimePar.avatar}
                               </div>
                               <div>
+                                {/* Nom complet du responsable de la suppression */}
                                 <p className="text-sm font-medium text-slate-700">{item.supprimePar.nom}</p>
-                                <p className="text-[11px] text-slate-400">{item.supprimePar.fonction}</p>
+                                {/* Email du responsable — permet d'identifier précisément qui a supprimé l'élément */}
+                                <a
+                                  href={`mailto:${item.supprimePar.email}`}
+                                  className="text-[11px] text-violet-500 hover:text-violet-700 hover:underline transition-colors"
+                                  title={`Contacter ${item.supprimePar.nom}`}
+                                >
+                                  {item.supprimePar.email || item.supprimePar.fonction}
+                                </a>
                               </div>
                             </div>
                           </td>
                           <td className="px-4 py-4">
-                            <p className="text-sm text-slate-700">{formatDate(item.supprimeLe)}</p>
-                            <p className="text-[11px] text-slate-400">
-                              {new Date(item.supprimeLe).getHours().toString().padStart(2, "0")}h{new Date(item.supprimeLe).getMinutes().toString().padStart(2, "0")}
+                            <p className="text-sm text-slate-700">
+                              {formatDate(item.supprimeLe)} à {new Date(item.supprimeLe).getHours().toString().padStart(2, "0")}h{new Date(item.supprimeLe).getMinutes().toString().padStart(2, "0")}
                             </p>
                           </td>
                           <td className="px-4 py-4">

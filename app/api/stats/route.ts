@@ -4,26 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { MockClient, MockProject, MockTask, MockTeam, MockDocument } from "@/lib/mock-db";
 
 export async function GET() {
-  // Return empty stats so dashboard doesn't crash even without session
-  const emptyStats = {
-    totalClients: 0, totalProjects: 0, totalTasks: 0,
-    totalEmployes: 0, totalDocuments: 0, totalBudget: 0,
-    projectsByStatut: [], tasksByStatut: [],
-    projectsPerClient: [], recentProjects: [],
-  };
-
   try {
     const session = await getServerSession(authOptions);
-    console.log("Session in /api/stats:", session);
-    if (!session?.user?.id) {
-      console.log("No session user id, returning empty stats");
-      return NextResponse.json(emptyStats);
-    }
+    const workspaceId = session?.user?.workspaceId;
 
-    // FORCE USING MOCK DB
-    console.log("Using mock DB for stats");
-    
-    const userId = session.user.id;
     const [
       clients,
       projects,
@@ -31,11 +15,11 @@ export async function GET() {
       teamMembers,
       docs,
     ] = await Promise.all([
-      MockClient.find(userId),
-      MockProject.find(userId),
-      MockTask.find({ userId }),
-      MockTeam.find(),
-      MockDocument.find(userId),
+      MockClient.find(workspaceId),
+      MockProject.find(workspaceId),
+      MockTask.find(workspaceId ? { workspaceId } : {}),
+      MockTeam.find({ workspaceId }),
+      MockDocument.find(workspaceId),
     ]);
     
     console.log("Clients found:", clients.length);
@@ -104,6 +88,11 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Error fetching stats:", error);
-    return NextResponse.json(emptyStats);
+    return NextResponse.json({
+      totalClients: 0, totalProjects: 0, totalTasks: 0,
+      totalEmployes: 0, totalDocuments: 0, totalBudget: 0,
+      projectsByStatut: [], tasksByStatut: [],
+      projectsPerClient: [], recentProjects: [],
+    });
   }
 }

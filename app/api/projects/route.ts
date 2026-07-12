@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
-import Project from "@/models/Project";
 import { MockProject } from "@/lib/mock-db";
+import { logActivity } from "@/lib/activity";
+import { notifyWorkspaceMembers } from "@/lib/notifications";
 
 const STATUTS = ["En attente", "En cours", "En test", "Terminé", "Suspendu"] as const;
 const PRIORITES = ["Faible", "Moyenne", "Haute", "Urgente"] as const;
@@ -33,12 +33,9 @@ const validateProjectServer = (data: any) => {
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
-    // FORCE USING MOCK DB
+    const workspaceId = session?.user?.workspaceId;
     console.log("Using mock DB for projects");
-    const projects = await MockProject.find(session.user.id);
+    const projects = await MockProject.find(workspaceId);
     return NextResponse.json(projects);
   } catch (error) {
     console.error("Error fetching projects:", error);
@@ -49,9 +46,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
+    const workspaceId = session?.user?.workspaceId || "mock-workspace";
+    const userId = session?.user?.id || "mock-user";
+    const userName = session?.user?.name || "Utilisateur";
+    const userEmail = session?.user?.email || "";
     const body = await request.json();
     const validationErrors = validateProjectServer(body);
     if (Object.keys(validationErrors).length > 0) {
@@ -59,9 +57,25 @@ export async function POST(request: Request) {
     }
     
     const { titre, description, dateDebut, dateFin, budget, statut, priorite, clientId, chefProjet } = body;
-    // FORCE USING MOCK DB
     console.log("Using mock DB to create project");
-    const project = await MockProject.create({ titre, description, dateDebut, dateFin, budget, statut, priorite, clientId, chefProjet, userId: session.user.id });
+    const project = await MockProject.create({ titre, description, dateDebut, dateFin, budget, statut, priorite, clientId, chefProjet, workspaceId });
+    await logActivity({
+      workspaceId, userId, userName, userEmail,
+      entityType: "project",
+      entityId: project._id.toString(),
+      entityName: titre,
+      action: "created",
+    });
+    await notifyWorkspaceMembers(
+      workspaceId,
+      userId,
+      "activity",
+      `Nouveau projet : ${titre}`,
+      `${userName || "Quelqu'un"} a créé le projet "${titre}"`,
+      `/dashboard/projects/${project._id}`,
+      "project", project._id.toString(),
+      userName,
+    );
     return NextResponse.json(project, { status: 201 });
   } catch (error) {
     console.error("Error creating project:", error);

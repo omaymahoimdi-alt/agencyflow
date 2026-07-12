@@ -27,6 +27,10 @@ export default function ProfilePage() {
     if (session?.user?.name) setName(session.user.name);
   }, [session]);
 
+  useEffect(() => {
+    if (status === "unauthenticated") router.push("/login");
+  }, [status, router]);
+
   if (status === "loading") {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -35,10 +39,7 @@ export default function ProfilePage() {
     );
   }
 
-  if (status === "unauthenticated") {
-    router.push("/login");
-    return null;
-  }
+  if (status === "unauthenticated") return null;
 
   const user = session?.user;
   const initials = user?.name

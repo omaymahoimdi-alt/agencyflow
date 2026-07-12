@@ -5,7 +5,8 @@ import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import Invitation from "@/models/Invitation";
-import { MockInvitation } from "@/lib/mock-db";
+import Workspace from "@/models/Workspace";
+import { MockInvitation, MockWorkspace } from "@/lib/mock-db";
 
 // Vérifie la connectivité SMTP Gmail
 async function verifySmtpConnection(transporter: nodemailer.Transporter) {
@@ -17,7 +18,7 @@ async function verifySmtpConnection(transporter: nodemailer.Transporter) {
   }
 }
 
-function buildInvitationEmail(prenom: string, nom: string, inviter: string, role: string, equipe: string, lien: string) {
+function buildInvitationEmail(prenom: string, nom: string, inviter: string, agence: string, role: string, equipe: string, lien: string) {
   return `
 <!DOCTYPE html>
 <html>
@@ -36,7 +37,7 @@ function buildInvitationEmail(prenom: string, nom: string, inviter: string, role
           <td style="padding:32px">
             <h2 style="margin:0 0 16px;color:#1e293b;font-size:20px">Bonjour ${prenom} ${nom},</h2>
             <p style="margin:0 0 12px;color:#475569;font-size:15px;line-height:1.6">
-              <strong>${inviter}</strong> vous invite à rejoindre l'agence sur <strong>AgencyFlow</strong>.
+              <strong>${inviter}</strong> vous invite à rejoindre <strong>${agence}</strong> sur AgencyFlow.
             </p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;padding:16px;margin:16px 0">
               <tr><td style="padding:4px 0"><span style="color:#64748b;font-size:13px">Rôle proposé :</span> <span style="color:#1e293b;font-size:14px;font-weight:600">${role}</span></td></tr>
@@ -72,7 +73,7 @@ function buildInvitationEmail(prenom: string, nom: string, inviter: string, role
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
 
@@ -96,6 +97,19 @@ export async function POST(request: Request) {
     const token = crypto.randomBytes(32).toString("hex");
     const expiration = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
+    // Look up workspace name
+    let agenceNom = "l'agence";
+    if (session.user.workspaceId) {
+      try {
+        await connectDB();
+        const ws = await Workspace.findById(session.user.workspaceId);
+        if (ws) agenceNom = ws.nom;
+      } catch {
+        const ws = await MockWorkspace.findOne({ _id: session.user.workspaceId });
+        if (ws) agenceNom = ws.nom;
+      }
+    }
+
     try {
       await connectDB();
       await Invitation.create({
@@ -108,24 +122,28 @@ export async function POST(request: Request) {
         invitePar: inviter,
         expiration,
         userId: session.user.id,
+        workspaceId: session.user.workspaceId,
       });
-    } catch {
-      await MockInvitation.create({
-        email: email.toLowerCase(),
-        token,
-        nom,
-        prenom,
-        role: role || "Développeur",
-        equipe: equipe || "",
-        invitePar: inviter,
-        expiration,
-        userId: session.user.id,
-      });
+    } catch (e) {
+      console.error("MongoDB invitation create failed:", e);
     }
+    // Always write to mock DB for consistency
+    await MockInvitation.create({
+      email: email.toLowerCase(),
+      token,
+      nom,
+      prenom,
+      role: role || "Développeur",
+      equipe: equipe || "",
+      invitePar: inviter,
+      expiration,
+      userId: session.user.id,
+      workspaceId: session.user.workspaceId,
+    });
 
-    const lien = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/register?token=${token}`;
+    const lien = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/invitation/${token}`;
 
-    const html = buildInvitationEmail(prenom, nom, inviter, role, equipe, lien);
+    const html = buildInvitationEmail(prenom, nom, inviter, agenceNom, role, equipe, lien);
 
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
@@ -147,7 +165,7 @@ export async function POST(request: Request) {
     await transporter.sendMail({
       from: `"AgencyFlow" <${gmailUser}>`,
       to: email,
-      subject: `${inviter} vous invite à rejoindre AgencyFlow`,
+      subject: `${inviter} vous invite à rejoindre ${agenceNom}`,
       html,
     });
 

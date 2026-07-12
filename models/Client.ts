@@ -13,8 +13,9 @@ const ClientSchema = new Schema(
     telephone: { type: String, default: "" },
     adresse: { type: String, default: "" },
     secteurActivite: { type: String, default: "" },
+    budget: { type: Number, default: 0 },
     dateCreation: { type: Date, default: Date.now },
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    workspaceId: { type: Schema.Types.ObjectId, ref: "Workspace", required: true, index: true },
   },
   { timestamps: true }
 );

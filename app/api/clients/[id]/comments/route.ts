@@ -6,9 +6,6 @@ import { MockClientComment } from "@/lib/mock-db";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const comments = await MockClientComment.find({ clientId: id });
     return NextResponse.json(comments);
@@ -26,7 +23,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const { id } = await params;
     const body = await request.json();
-    const comment = await MockClientComment.create({ clientId: id, ...body });
+    const comment = await MockClientComment.create({
+      clientId: id,
+      userId: session.user.id,
+      userName: session.user.name || "",
+      userEmail: session.user.email || "",
+      comment: body.comment,
+      workspaceId: session.user.workspaceId || "",
+    });
     return NextResponse.json(comment, { status: 201 });
   } catch (error) {
     console.error("Error creating client comment:", error);
@@ -45,7 +49,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (!body._id) {
       return NextResponse.json({ message: "ID requis" }, { status: 400 });
     }
-    const updated = await MockClientComment.findByIdAndUpdate(body._id, { clientId: id, ...body });
+    const updated = await MockClientComment.findByIdAndUpdate(body._id, {
+      clientId: id,
+      comment: body.comment,
+    });
     return NextResponse.json(updated);
   } catch (error) {
     console.error("Error updating client comment:", error);

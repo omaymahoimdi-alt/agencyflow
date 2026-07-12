@@ -27,7 +27,7 @@ const ProjectSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "User",
     },
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    workspaceId: { type: Schema.Types.ObjectId, ref: "Workspace", required: true, index: true },
   },
   { timestamps: true }
 );

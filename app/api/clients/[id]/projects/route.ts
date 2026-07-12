@@ -6,11 +6,8 @@ import { MockProject } from "@/lib/mock-db";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
-    const allProjects = await MockProject.find(session.user.id);
+    const allProjects = await MockProject.find(session?.user?.workspaceId);
     const projects = allProjects.filter(
       (p: any) => p.clientId && p.clientId._id === id
     );

@@ -15,7 +15,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 text-slate-950 dark:text-slate-100">
       <Sidebar />
       <div className="min-h-screen lg:ml-72">
-        <Navbar userName={session.user.name ?? "Admin"} />
+        <Navbar userName={session.user.name || session.user.email || "Admin"} />
         <main className="p-4 lg:p-8">{children}</main>
       </div>
     </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   ArrowLeft, Star, FolderKanban, Clock, CheckCircle2,
   MoreHorizontal, Pencil, Share2, Users, Calendar,
@@ -70,6 +71,7 @@ interface DiscussionMessage {
   channelId: string;
   userId: string;
   userName: string;
+  userEmail: string;
   userAvatar: string;
   content: string;
   time: string;
@@ -97,6 +99,7 @@ interface FileItem {
   type: string;
   size: number;
   owner: string;
+  ownerEmail?: string;
   ownerAvatar: string;
   lastModified: string;
   folderId: string;
@@ -150,6 +153,7 @@ interface ActivityEntry {
   id: string;
   type: "tache" | "fichier" | "commentaire" | "calendrier" | "equipe" | "budget";
   user: string;
+  userEmail?: string;
   userAvatar: string;
   action: string;
   target: string;
@@ -208,12 +212,14 @@ const TABS = [
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const id = params.id as string;
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [projectActivities, setProjectActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Vue d'ensemble");
   const [favorited, setFavorited] = useState(false);
@@ -356,6 +362,22 @@ export default function ProjectDetailPage() {
   const [extraFilterOpen, setExtraFilterOpen] = useState(false);
   const [extraFilters, setExtraFilters] = useState({ favorites: false, shared: false, recent: false, archived: false });
 
+  function openFileContextMenu(e: React.MouseEvent, fileId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const menuWidth = 208;
+    const menuItems = fileId.startsWith("fold-") ? 2 : 4;
+    const menuHeight = menuItems * 42 + 12;
+    const padding = 12;
+    const maxX = window.innerWidth - menuWidth - padding;
+    const maxY = window.innerHeight - menuHeight - padding;
+    const safeMaxX = Math.max(padding, maxX);
+    const safeMaxY = Math.max(padding, maxY);
+    const x = Math.min(Math.max(padding, e.clientX), safeMaxX);
+    const y = Math.min(Math.max(padding, e.clientY), safeMaxY);
+    setFileContextMenu({ x, y, fileId });
+  }
+
   const defaultChannels: DiscussionChannel[] = [
     { id: "ch-1", name: "Général", members: 8, lastMessage: "Parfait, je m'en occupe aujourd'hui", lastActivity: "2026-06-28T09:30:00", unread: 3, createdBy: "Omayma Hoimdi" },
     { id: "ch-2", name: "Développement", members: 5, lastMessage: "La PR est prête pour review", lastActivity: "2026-06-28T08:45:00", unread: 1, createdBy: "Mohamed Salah" },
@@ -365,38 +387,35 @@ export default function ProjectDetailPage() {
   ];
 
   const defaultMessages: DiscussionMessage[] = [
-    { id: "dm-1", channelId: "ch-1", userId: "user-1", userName: "Omayma Hoimdi", userAvatar: "OH", content: "Bonjour à tous ! Comment avance le projet ?", time: "2026-06-28T09:00:00", reactions: [{ emoji: "👍", users: ["user-2"] }, { emoji: "❤️", users: ["user-3"] }], pinned: false, edited: false },
-    { id: "dm-2", channelId: "ch-1", userId: "user-2", userName: "Mohamed Salah", userAvatar: "MS", content: "La partie backend est presque terminée, il reste quelques endpoints à finaliser.", time: "2026-06-28T09:05:00", reactions: [{ emoji: "😊", users: ["user-1"] }], pinned: false, edited: false },
-    { id: "dm-3", channelId: "ch-1", userId: "user-3", userName: "John Smith", userAvatar: "JS", content: "Côté design, j'ai terminé les maquettes pour la page tableau de bord.", time: "2026-06-28T09:10:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-4", channelId: "ch-1", userId: "user-1", userName: "Omayma Hoimdi", userAvatar: "OH", content: "Super ! Est-ce qu'on peut faire une réunion pour synchroniser tout ça ?", time: "2026-06-28T09:15:00", reactions: [{ emoji: "👍", users: ["user-2", "user-3"] }], pinned: true, edited: false },
-    { id: "dm-5", channelId: "ch-1", userId: "user-2", userName: "Mohamed Salah", userAvatar: "MS", content: "Bonne idée. Je propose mercredi matin à 10h.", time: "2026-06-28T09:20:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-6", channelId: "ch-1", userId: "user-3", userName: "John Smith", userAvatar: "JS", content: "Ca me va. J'aurai fini les maquettes d'ici là.", time: "2026-06-28T09:25:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-7", channelId: "ch-1", userId: "user-1", userName: "Omayma Hoimdi", userAvatar: "OH", content: "Parfait, je m'en occupe aujourd'hui", time: "2026-06-28T09:30:00", reactions: [{ emoji: "😊", users: ["user-2", "user-3"] }], pinned: false, edited: false },
-    { id: "dm-8", channelId: "ch-2", userId: "user-2", userName: "Mohamed Salah", userAvatar: "MS", content: "J'ai pushé les dernières modifications sur la branche develop.", time: "2026-06-28T08:30:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-9", channelId: "ch-2", userId: "user-1", userName: "Omayma Hoimdi", userAvatar: "OH", content: "Je vais review le code aujourd'hui.", time: "2026-06-28T08:35:00", reactions: [{ emoji: "👍", users: ["user-2"] }], pinned: false, edited: false },
-    { id: "dm-10", channelId: "ch-2", userId: "user-2", userName: "Mohamed Salah", userAvatar: "MS", content: "La PR est prête pour review", time: "2026-06-28T08:45:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-11", channelId: "ch-3", userId: "user-3", userName: "John Smith", userAvatar: "JS", content: "J'ai mis à jour le design system avec les nouvelles couleurs.", time: "2026-06-27T15:00:00", reactions: [{ emoji: "❤️", users: ["user-1"] }], pinned: false, edited: false },
-    { id: "dm-12", channelId: "ch-3", userId: "user-1", userName: "Omayma Hoimdi", userAvatar: "OH", content: "Très beau travail ! Les couleurs sont parfaites.", time: "2026-06-27T15:30:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-13", channelId: "ch-3", userId: "user-3", userName: "John Smith", userAvatar: "JS", content: "Nouveau mockup page profil", time: "2026-06-27T16:20:00", reactions: [{ emoji: "👍", users: ["user-1", "user-2"] }], pinned: true, edited: false },
-    { id: "dm-14", channelId: "ch-4", userId: "user-1", userName: "Omayma Hoimdi", userAvatar: "OH", content: "Le client a confirmé la réunion de jeudi.", time: "2026-06-27T13:00:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-15", channelId: "ch-4", userId: "user-2", userName: "Mohamed Salah", userAvatar: "MS", content: "Je prépare la présentation pour jeudi.", time: "2026-06-27T13:30:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-16", channelId: "ch-4", userId: "user-3", userName: "John Smith", userAvatar: "JS", content: "RDV confirmé pour jeudi 15h", time: "2026-06-27T14:00:00", reactions: [{ emoji: "👍", users: ["user-1"] }], pinned: false, edited: false },
-    { id: "dm-17", channelId: "ch-5", userId: "user-2", userName: "Mohamed Salah", userAvatar: "MS", content: "Le pipeline CI/CD est opérationnel.", time: "2026-06-26T10:00:00", reactions: [], pinned: false, edited: false },
-    { id: "dm-18", channelId: "ch-5", userId: "user-1", userName: "Omayma Hoimdi", userAvatar: "OH", content: "Super ! On peut envisager un déploiement vendredi.", time: "2026-06-26T10:30:00", reactions: [{ emoji: "👍", users: ["user-2"] }], pinned: false, edited: false },
-    { id: "dm-19", channelId: "ch-5", userId: "user-2", userName: "Mohamed Salah", userAvatar: "MS", content: "Build v2.1.0 déployé sur staging", time: "2026-06-26T11:10:00", reactions: [{ emoji: "🎉", users: ["user-1", "user-3"] }], pinned: false, edited: false },
+    { id: "dm-1", channelId: "ch-1", userId: "user-1", userName: "Omayma Hoimdi", userEmail: "omayma.hoimdi@esprit.tn", userAvatar: "OH", content: "Bonjour à tous ! Comment avance le projet ?", time: "2026-06-28T09:00:00", reactions: [{ emoji: "👍", users: ["user-2"] }, { emoji: "❤️", users: ["user-3"] }], pinned: false, edited: false },
+    { id: "dm-2", channelId: "ch-1", userId: "user-2", userName: "Mohamed Salah", userEmail: "m.salah@esprit.tn", userAvatar: "MS", content: "La partie backend est presque terminée, il reste quelques endpoints à finaliser.", time: "2026-06-28T09:05:00", reactions: [{ emoji: "😊", users: ["user-1"] }], pinned: false, edited: false },
+    { id: "dm-3", channelId: "ch-1", userId: "user-3", userName: "John Smith", userEmail: "john.smith@example.com", userAvatar: "JS", content: "Côté design, j'ai terminé les maquettes pour la page tableau de bord.", time: "2026-06-28T09:10:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-4", channelId: "ch-1", userId: "user-1", userName: "Omayma Hoimdi", userEmail: "omayma.hoimdi@esprit.tn", userAvatar: "OH", content: "Super ! Est-ce qu'on peut faire une réunion pour synchroniser tout ça ?", time: "2026-06-28T09:15:00", reactions: [{ emoji: "👍", users: ["user-2", "user-3"] }], pinned: true, edited: false },
+    { id: "dm-5", channelId: "ch-1", userId: "user-2", userName: "Mohamed Salah", userEmail: "m.salah@esprit.tn", userAvatar: "MS", content: "Bonne idée. Je propose mercredi matin à 10h.", time: "2026-06-28T09:20:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-6", channelId: "ch-1", userId: "user-3", userName: "John Smith", userEmail: "john.smith@example.com", userAvatar: "JS", content: "Ca me va. J'aurai fini les maquettes d'ici là.", time: "2026-06-28T09:25:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-7", channelId: "ch-1", userId: "user-1", userName: "Omayma Hoimdi", userEmail: "omayma.hoimdi@esprit.tn", userAvatar: "OH", content: "Parfait, je m'en occupe aujourd'hui", time: "2026-06-28T09:30:00", reactions: [{ emoji: "😊", users: ["user-2", "user-3"] }], pinned: false, edited: false },
+    { id: "dm-8", channelId: "ch-2", userId: "user-2", userName: "Mohamed Salah", userEmail: "m.salah@esprit.tn", userAvatar: "MS", content: "J'ai pushé les dernières modifications sur la branche develop.", time: "2026-06-28T08:30:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-9", channelId: "ch-2", userId: "user-1", userName: "Omayma Hoimdi", userEmail: "omayma.hoimdi@esprit.tn", userAvatar: "OH", content: "Je vais review le code aujourd'hui.", time: "2026-06-28T08:35:00", reactions: [{ emoji: "👍", users: ["user-2"] }], pinned: false, edited: false },
+    { id: "dm-10", channelId: "ch-2", userId: "user-2", userName: "Mohamed Salah", userEmail: "m.salah@esprit.tn", userAvatar: "MS", content: "La PR est prête pour review", time: "2026-06-28T08:45:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-11", channelId: "ch-3", userId: "user-3", userName: "John Smith", userEmail: "john.smith@example.com", userAvatar: "JS", content: "J'ai mis à jour le design system avec les nouvelles couleurs.", time: "2026-06-27T15:00:00", reactions: [{ emoji: "❤️", users: ["user-1"] }], pinned: false, edited: false },
+    { id: "dm-12", channelId: "ch-3", userId: "user-1", userName: "Omayma Hoimdi", userEmail: "omayma.hoimdi@esprit.tn", userAvatar: "OH", content: "Très beau travail ! Les couleurs sont parfaites.", time: "2026-06-27T15:30:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-13", channelId: "ch-3", userId: "user-3", userName: "John Smith", userEmail: "john.smith@example.com", userAvatar: "JS", content: "Nouveau mockup page profil", time: "2026-06-27T16:20:00", reactions: [{ emoji: "👍", users: ["user-1", "user-2"] }], pinned: true, edited: false },
+    { id: "dm-14", channelId: "ch-4", userId: "user-1", userName: "Omayma Hoimdi", userEmail: "omayma.hoimdi@esprit.tn", userAvatar: "OH", content: "Le client a confirmé la réunion de jeudi.", time: "2026-06-27T13:00:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-15", channelId: "ch-4", userId: "user-2", userName: "Mohamed Salah", userEmail: "m.salah@esprit.tn", userAvatar: "MS", content: "Je prépare la présentation pour jeudi.", time: "2026-06-27T13:30:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-16", channelId: "ch-4", userId: "user-3", userName: "John Smith", userEmail: "john.smith@example.com", userAvatar: "JS", content: "RDV confirmé pour jeudi 15h", time: "2026-06-27T14:00:00", reactions: [{ emoji: "👍", users: ["user-1"] }], pinned: false, edited: false },
+    { id: "dm-17", channelId: "ch-5", userId: "user-2", userName: "Mohamed Salah", userEmail: "m.salah@esprit.tn", userAvatar: "MS", content: "Le pipeline CI/CD est opérationnel.", time: "2026-06-26T10:00:00", reactions: [], pinned: false, edited: false },
+    { id: "dm-18", channelId: "ch-5", userId: "user-1", userName: "Omayma Hoimdi", userEmail: "omayma.hoimdi@esprit.tn", userAvatar: "OH", content: "Super ! On peut envisager un déploiement vendredi.", time: "2026-06-26T10:30:00", reactions: [{ emoji: "👍", users: ["user-2"] }], pinned: false, edited: false },
+    { id: "dm-19", channelId: "ch-5", userId: "user-2", userName: "Mohamed Salah", userEmail: "m.salah@esprit.tn", userAvatar: "MS", content: "Build v2.1.0 déployé sur staging", time: "2026-06-26T11:10:00", reactions: [{ emoji: "🎉", users: ["user-1", "user-3"] }], pinned: false, edited: false },
   ];
 
-  function loadChannels(): DiscussionChannel[] {
-    try { const saved = localStorage.getItem("agencyflow_channels_" + id); if (saved) return JSON.parse(saved); } catch {}
-    return defaultChannels;
-  }
-  function loadMessages(): DiscussionMessage[] {
-    try { const saved = localStorage.getItem("agencyflow_messages_" + id); if (saved) return JSON.parse(saved); } catch {}
-    return defaultMessages;
-  }
-
-  const [channels, setChannels] = useState<DiscussionChannel[]>(loadChannels);
-  const [messages, setMessages] = useState<DiscussionMessage[]>(loadMessages);
+  const [channels, setChannels] = useState<DiscussionChannel[]>(defaultChannels);
+  const channelsLoaded = useRef(false);
+  useEffect(() => {
+    if (!id) return;
+    try { const saved = localStorage.getItem("agencyflow_channels_" + id); if (saved) setChannels(JSON.parse(saved)); } catch {}
+    channelsLoaded.current = true;
+  }, [id]);
+  const [messages, setMessages] = useState<DiscussionMessage[]>([]);
   const [activeChannel, setActiveChannel] = useState("ch-1");
   const [channelSearch, setChannelSearch] = useState("");
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -471,27 +490,61 @@ export default function ProjectDetailPage() {
     },
   ];
 
-  function loadFolders(): FolderItem[] {
-    try {
-      const saved = localStorage.getItem("agencyflow_folders_" + id);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return defaultFolders;
-  }
-
-  const [folders, setFolders] = useState<FolderItem[]>(loadFolders);
+  const [folders, setFolders] = useState<FolderItem[]>(defaultFolders);
+  const foldersLoaded = useRef(false);
 
   useEffect(() => {
+    if (!id) return;
+    fetch(`/api/projects/${id}/folders`).then(r => r.json()).then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setFolders(data);
+        try { localStorage.setItem("agencyflow_folders_" + id, JSON.stringify(data)); } catch {}
+      } else {
+        const saved = localStorage.getItem("agencyflow_folders_" + id);
+        if (saved) {
+          try { setFolders(JSON.parse(saved)); } catch {}
+        }
+      }
+    }).catch(() => {
+      const saved = localStorage.getItem("agencyflow_folders_" + id);
+      if (saved) {
+        try { setFolders(JSON.parse(saved)); } catch {}
+      }
+    }).finally(() => {
+      foldersLoaded.current = true;
+    });
+  }, [id]);
+
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    if (!foldersLoaded.current) return;
     try { localStorage.setItem("agencyflow_folders_" + id, JSON.stringify(folders)); } catch {}
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fetch(`/api/projects/${id}/folders`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(folders) }).catch(() => {});
+    }, 2000);
   }, [folders, id]);
 
   useEffect(() => {
+    if (!channelsLoaded.current) return;
     try { localStorage.setItem("agencyflow_channels_" + id, JSON.stringify(channels)); } catch {}
   }, [channels, id]);
 
   useEffect(() => {
-    try { localStorage.setItem("agencyflow_messages_" + id, JSON.stringify(messages)); } catch {}
-  }, [messages, id]);
+    if (!id) return;
+    fetch(`/api/projects/${id}/discussions`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setMessages(data.map((m: any) => ({ ...m, id: m._id || m.id })));
+        } else {
+          setMessages(defaultMessages);
+        }
+      })
+      .catch(() => {
+        setMessages(defaultMessages);
+      });
+  }, [id]);
 
   function getFileIcon(type: string) {
     const icons: Record<string, any> = { PDF: FileText, DOCX: FileText, PPTX: FileText, ZIP: FileText, JPG: Image, PNG: Image, FIG: Palette, XLSX: FileSpreadsheet };
@@ -551,7 +604,21 @@ export default function ProjectDetailPage() {
     return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
   }
 
+  const TOXIC_PATTERNS = [
+    /\bstupide\b/i, /\bidiot\b/i, /\bimbécile\b/i, /\babruti\b/i, /\bdebile\b/i,
+    /\bcon\b/i, /\bconnard\b/i, /\bconnasse\b/i,
+    /\bputain\b/i, /\bmerde\b/i, /\bsalope\b/i, /\bbordel\b/i,
+    /\bencul[ée]\b/i, /\bntm\b/i, /\bb[âa]tard\b/i,
+    /\bfuck\b/i, /\bshit\b/i, /\basshole\b/i, /\bbitch\b/i, /\bdamn\b/i, /\bbastard\b/i,
+    /\bpiss\s+off\b/i,
+  ];
+
+  function clientToxicityCheck(text: string): boolean {
+    return TOXIC_PATTERNS.some(re => re.test(text));
+  }
+
   async function checkToxicity(text: string): Promise<{ toxic: boolean; method: string }> {
+    if (clientToxicityCheck(text)) return { toxic: true, method: "client" };
     try {
       const res = await fetch("http://127.0.0.1:5000/check_toxicity", {
         method: "POST",
@@ -581,26 +648,28 @@ export default function ProjectDetailPage() {
       return;
     }
 
-    const msg: DiscussionMessage = {
-      id: "dm-" + Date.now(),
-      channelId: activeChannel,
-      userId: "user-1",
-      userName: "Omayma Hoimdi",
-      userAvatar: "OH",
-      content,
-      time: new Date().toISOString(),
-      reactions: [],
-      pinned: false,
-      edited: false,
-      parentId: replyToId || undefined,
-      attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
-    };
+    const res = await fetch(`/api/projects/${id}/discussions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelId: activeChannel,
+        content,
+        parentId: replyToId || undefined,
+        attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
+        mentions: [],
+      }),
+    });
+    if (!res.ok) return;
+    const saved = await res.json();
+    const msg: DiscussionMessage = { ...saved, id: saved._id || saved.id };
     setMessages(prev => [...prev, msg]);
     const preview = content || (pendingAttachments[0]?.type === "image" ? "📷 Image" : pendingAttachments[0]?.type === "voice" ? "🎤 Message vocal" : "📎 Fichier");
     setChannels(prev => prev.map(ch => ch.id === activeChannel ? { ...ch, lastMessage: preview, lastActivity: new Date().toISOString(), unread: 0 } : ch));
     setMessageInput("");
     setReplyToId(null);
     setPendingAttachments([]);
+    const chanName = channels.find(c => c.id === activeChannel)?.name || "discussion";
+    createActivity("message_sent", `a envoyé un message dans #${chanName}`);
   }
 
   const EMOJIS = ["😀","😂","😍","🥰","😎","🤔","😊","👍","❤️","🎉","🔥","🚀","💡","✅","❌","⭐","🎯","💪","🙏","👏","😅","🤩","😢","😡","🤗","😱","🥳","😴","🤯","😈","💀","☀️","🌈","⚡","💎","🎵","🎶","📌","💼","📁","📊","📈","📉","🗂️","📝","✏️","🖊️","📎","🔗","🔒","🔓","💬","🗨️","📧","📅","📆","⏰","🕐","🔄","🔝","📌","📍","🎯","🏆","🥇","🥈","🥉","🏅","🎖️","📚","🖥️","💻","📱","🖨️","🔧","⚙️","🛠️","🔨","🧰","📡","🎤","🔊","🔇","🎧","📷","🎥","🎬","✂️","📏","🧩","♟️","🎲","🎭","🎨","🧵","🧶","🌐","📋","📌","📎","🖇️","🔗"];
@@ -724,30 +793,57 @@ export default function ProjectDetailPage() {
     if (!content) { setEditingMessageId(null); return; }
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content, edited: true } : m));
     setEditingMessageId(null);
+    fetch(`/api/projects/${id}/discussions?id=${msgId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, edited: true }),
+    }).catch(() => {});
   }
 
   function handleDeleteMessage(msgId: string) {
     if (!confirm("Supprimer ce message ?")) return;
     setMessages(prev => prev.filter(m => m.id !== msgId));
+    fetch(`/api/projects/${id}/discussions?id=${msgId}`, { method: "DELETE" }).catch(() => {});
   }
 
   function handleTogglePin(msgId: string) {
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pinned: !m.pinned } : m));
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) return;
+    const next = !msg.pinned;
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pinned: next } : m));
+    fetch(`/api/projects/${id}/discussions?id=${msgId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pinned: next }),
+    }).catch(() => {});
   }
 
   function handleToggleReaction(msgId: string, emoji: string) {
-    setMessages(prev => prev.map(m => {
-      if (m.id !== msgId) return m;
-      const existing = m.reactions.find(r => r.emoji === emoji);
-      if (existing) {
-        if (existing.users.includes("user-1")) {
-          const updated = existing.users.filter(u => u !== "user-1");
-          return { ...m, reactions: updated.length ? m.reactions.map(r => r.emoji === emoji ? { ...r, users: updated } : r) : m.reactions.filter(r => r.emoji !== emoji) };
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) return;
+    const userEmail = session?.user?.email || "user-1";
+    let newReactions = [...msg.reactions];
+    const existing = newReactions.find(r => r.emoji === emoji);
+    if (existing) {
+      if (existing.users.includes(userEmail)) {
+        const updated = existing.users.filter(u => u !== userEmail);
+        if (updated.length) {
+          newReactions = newReactions.map(r => r.emoji === emoji ? { ...r, users: updated } : r);
+        } else {
+          newReactions = newReactions.filter(r => r.emoji !== emoji);
         }
-        return { ...m, reactions: m.reactions.map(r => r.emoji === emoji ? { ...r, users: [...r.users, "user-1"] } : r) };
+      } else {
+        newReactions = newReactions.map(r => r.emoji === emoji ? { ...r, users: [...r.users, userEmail] } : r);
       }
-      return { ...m, reactions: [...m.reactions, { emoji, users: ["user-1"] }] };
-    }));
+    } else {
+      newReactions = [...newReactions, { emoji, users: [userEmail] }];
+    }
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m));
+    fetch(`/api/projects/${id}/discussions?id=${msgId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reactions: newReactions }),
+    }).catch(() => {});
   }
 
   const filteredChannels = useMemo(() => {
@@ -778,64 +874,82 @@ export default function ProjectDetailPage() {
   const pageSizeActivities = 10;
 
   const activityEntries = useMemo((): ActivityEntry[] => {
+    if (projectActivities.length > 0) {
+      return projectActivities.map((a: any) => {
+        let type: ActivityEntry["type"] = "tache";
+        if (a.action?.startsWith("message") || a.action === "comment") type = "commentaire";
+        else if (a.action?.startsWith("event") || a.action === "calendar") type = "calendrier";
+        else if (a.action?.startsWith("file") || a.action === "fichier") type = "fichier";
+        else if (a.action?.startsWith("team") || a.action === "equipe") type = "equipe";
+        return {
+          id: a._id,
+          type,
+          user: a.userName || "Système",
+          userEmail: a.userEmail || "",
+          userAvatar: (a.userName || "S").split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?",
+          action: a.description || a.action || "",
+          target: "",
+          timestamp: a.createdAt || new Date().toISOString(),
+        };
+      });
+    }
+
+    // Fallback: derive from local state for backward compatibility
     const entries: ActivityEntry[] = [];
 
-    // Tasks activities
     tasks.forEach(t => {
       const user = t.employeId ? t.employeId.prenom + " " + t.employeId.nom : "Omayma Hoimdi";
+      const email = t.employeId ? (t.employeId as any).email || "" : "";
       const avatar = t.employeId ? t.employeId.prenom[0] + t.employeId.nom[0] : "OH";
       entries.push({
-        id: "act-task-" + t._id, type: "tache", user, userAvatar: avatar,
+        id: "act-task-" + t._id, type: "tache", user, userEmail: email, userAvatar: avatar,
         action: "a créé la tâche", target: t.titre, timestamp: t.createdAt || new Date().toISOString(),
       });
       if (t.statut === "Terminée") {
         entries.push({
-          id: "act-task-done-" + t._id, type: "tache", user, userAvatar: avatar,
+          id: "act-task-done-" + t._id, type: "tache", user, userEmail: email, userAvatar: avatar,
           action: "a terminé la tâche", target: t.titre, timestamp: t.dateFin || new Date().toISOString(),
         });
       }
     });
 
-    // File activities
     allFiles.forEach(f => {
       entries.push({
-        id: "act-file-" + f.id, type: "fichier", user: f.owner, userAvatar: f.ownerAvatar,
+        id: "act-file-" + f.id, type: "fichier", user: f.owner, userEmail: f.ownerEmail || "", userAvatar: f.ownerAvatar,
         action: "a téléchargé le fichier", target: f.name + "." + f.type.toLowerCase(), timestamp: f.lastModified,
       });
     });
 
-    // Event activities
     events.forEach(e => {
       const member = team.find(m => m._id === e.employeId);
       const user = member ? member.prenom + " " + member.nom : "Omayma Hoimdi";
+      const email = member ? (member as any).email || "" : "";
       const avatar = member ? member.prenom[0] + member.nom[0] : "OH";
       entries.push({
-        id: "act-event-" + e._id, type: "calendrier", user, userAvatar: avatar,
+        id: "act-event-" + e._id, type: "calendrier", user, userEmail: email, userAvatar: avatar,
         action: "a planifié " + e.type.toLowerCase(), target: e.titre, timestamp: e.dateDebut,
       });
     });
 
-    // Discussion messages as comments
     messages.forEach(m => {
       entries.push({
-        id: "act-msg-" + m.id, type: "commentaire", user: m.userName, userAvatar: m.userAvatar,
+        id: "act-msg-" + m.id, type: "commentaire", user: m.userName, userEmail: (m as any).userEmail || "", userAvatar: m.userAvatar,
         action: "a commenté dans #" + (channels.find(c => c.id === m.channelId)?.name || "discussion"),
         target: m.content.length > 60 ? m.content.slice(0, 60) + "..." : m.content, timestamp: m.time,
       });
     });
 
-    // Team member activities
     team.forEach(t => {
       entries.push({
         id: "act-team-" + t._id, type: "equipe", user: t.prenom + " " + t.nom,
-        userAvatar: t.prenom[0] + t.nom[0],
+        userEmail: (t as any).email || "", userAvatar: t.prenom[0] + t.nom[0],
         action: "a rejoint l'équipe", target: "Membre " + t.role, timestamp: new Date().toISOString(),
       });
     });
 
     entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return entries;
-  }, [tasks, allFiles, events, messages, team, channels]);
+  }, [tasks, allFiles, events, messages, team, channels, projectActivities]);
 
   const filteredActivities = useMemo(() => {
     let result = [...activityEntries];
@@ -972,31 +1086,37 @@ export default function ProjectDetailPage() {
         return next;
       });
       setExpandedFolders(prev => { const next = new Set(prev); next.add(targetFolderId); return next; });
+      createActivity("file_moved", `a déplacé le fichier vers un autre dossier`);
     }
   }
 
-  function handleFileAction(action: string, fileId: string) {
+  async function handleFileAction(action: string, fileId: string) {
     setFileContextMenu(null);
     const isFolder = fileId.startsWith("fold-");
     if (isFolder) {
       if (action === "delete") {
-        if (!confirm(`Supprimer le dossier "${folders.find(f => f.id === fileId)?.name}" et tous ses fichiers ?`)) return;
+        const folderName = folders.find(f => f.id === fileId)?.name || "";
+        if (!confirm(`Supprimer le dossier "${folderName}" et tous ses fichiers ?`)) return;
         const folder = folders.find(f => f.id === fileId);
         if (folder) {
-          folder.files.forEach(fi => {
-            addToCorbeille({
+          const userName = session?.user?.name || "Utilisateur inconnu";
+          const userEmail = session?.user?.email || "—";
+          const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+          for (const fi of folder.files) {
+            await addToCorbeille({
               id: "corbeille-file-" + Date.now() + "-" + fi.id,
               type: "Fichier",
               nom: fi.name + "." + fi.type.toLowerCase(),
-              supprimePar: { nom: "Moi", fonction: "Utilisateur", avatar: "M" },
+              supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
               supprimeLe: new Date().toISOString(),
               supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
               sourceData: fi,
               meta: { projectId: id || "", folderId: fi.folderId, folderName: folder.name },
             });
-          });
+          }
         }
         setFolders(prev => prev.filter(f => f.id !== fileId));
+        createActivity("file_deleted", `a supprimé le dossier « ${folderName} » avec ${folder?.files.length || 0} fichier(s)`);
       } else if (action === "rename") {
         setFileRenameId(fileId);
         setFileRenameValue(folders.find(f => f.id === fileId)?.name || "");
@@ -1012,16 +1132,22 @@ export default function ProjectDetailPage() {
       case "delete":
         if (!confirm("Supprimer ce fichier ?")) return;
         setFolders(prev => prev.map(f => ({ ...f, files: f.files.filter(fi => fi.id !== fileId) })));
-        addToCorbeille({
-          id: "corbeille-file-" + Date.now(),
-          type: "Fichier",
-          nom: file.name + "." + file.type.toLowerCase(),
-          supprimePar: { nom: "Moi", fonction: "Utilisateur", avatar: "M" },
-          supprimeLe: new Date().toISOString(),
-          supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          sourceData: file,
-          meta: { projectId: id || "", folderId: file.folderId, folderName: file.folderName },
-        });
+        {
+          const delName = session?.user?.name || "Utilisateur inconnu";
+          const delEmail = session?.user?.email || "—";
+          const delAvatar = delName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+          await addToCorbeille({
+            id: "corbeille-file-" + Date.now(),
+            type: "Fichier",
+            nom: file.name + "." + file.type.toLowerCase(),
+            supprimePar: { nom: delName, email: delEmail, fonction: session?.user?.role || "Utilisateur", avatar: delAvatar },
+            supprimeLe: new Date().toISOString(),
+            supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            sourceData: file,
+            meta: { projectId: id || "", folderId: file.folderId, folderName: file.folderName },
+          });
+        }
+        createActivity("file_deleted", `a supprimé le fichier « ${file.name}.${file.type.toLowerCase()} »`);
         break;
       case "rename":
         setFileRenameId(fileId);
@@ -1032,6 +1158,7 @@ export default function ProjectDetailPage() {
           ...f,
           files: [...f.files, ...f.files.filter(fi => fi.id === fileId).map(fi => ({ ...fi, id: fi.id + "_copy", name: fi.name + " (copie)" }))]
         })));
+        createActivity("file_created", `a dupliqué le fichier « ${file.name}.${file.type.toLowerCase()} »`);
         break;
       case "preview":
         setShowFilePreview(fileId);
@@ -1046,14 +1173,21 @@ export default function ProjectDetailPage() {
     setExpandedFolders(prev => { const next = new Set(prev); next.add(newId); return next; });
     setNewFolderName("");
     setShowNewFolderModal(false);
+    createActivity("folder_created", `a créé le dossier « ${newFolderName.trim()} »`);
   }
 
   function handleRenameConfirm() {
     if (!fileRenameId || !fileRenameValue.trim()) { setFileRenameId(null); return; }
     if (fileRenameId.startsWith("fold-")) {
+      const oldName = folders.find(f => f.id === fileRenameId)?.name || "";
       setFolders(prev => prev.map(f => f.id === fileRenameId ? { ...f, name: fileRenameValue.trim() } : f));
+      createActivity("file_renamed", `a renommé le dossier « ${oldName} » en « ${fileRenameValue.trim()} »`);
     } else {
+      const oldFile = allFiles.find(f => f.id === fileRenameId);
       setFolders(prev => prev.map(f => ({ ...f, files: f.files.map(fi => fi.id === fileRenameId ? { ...fi, name: fileRenameValue.trim() } : fi) })));
+      if (oldFile) {
+        createActivity("file_renamed", `a renommé le fichier « ${oldFile.name}.${oldFile.type.toLowerCase()} » en « ${fileRenameValue.trim()}.${oldFile.type.toLowerCase()} »`);
+      }
     }
     setFileRenameId(null);
   }
@@ -1101,7 +1235,13 @@ export default function ProjectDetailPage() {
       setTaskSaving(false);
       return;
     }
-    const payload = { ...taskForm, projetId: id };
+    const today = new Date().toISOString().split("T")[0];
+    const payload = {
+      ...taskForm,
+      dateDebut: taskForm.dateDebut || today,
+      dateFin: taskForm.dateFin || today,
+      projetId: id,
+    };
     const method = editingTask ? "PUT" : "POST";
     const url = editingTask ? `/api/tasks/${editingTask._id}` : "/api/tasks";
     const res = await fetch(url, {
@@ -1112,6 +1252,12 @@ export default function ProjectDetailPage() {
     if (res.ok) {
       setShowTaskModal(false);
       refreshTasks();
+      const taskName = taskForm.titre;
+      if (editingTask) {
+        createActivity("task_updated", `a modifié la tâche « ${taskName} »`);
+      } else {
+        createActivity("task_created", `a créé la tâche « ${taskName} »`);
+      }
     } else {
       const d = await res.json();
       setTaskError(d.message || "Erreur serveur");
@@ -1125,11 +1271,17 @@ export default function ProjectDetailPage() {
     await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
     refreshTasks();
     if (task) {
-      addToCorbeille({
+      createActivity("task_deleted", `a supprimé la tâche « ${task.titre} »`);
+      // Identification automatique du responsable via la session de l'utilisateur connecté.
+      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
+      const userName = session?.user?.name || "Utilisateur inconnu";
+      const userEmail = session?.user?.email || "—";
+      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+      await addToCorbeille({
         id: "corbeille-tache-" + Date.now(),
         type: "Tâche",
         nom: task.titre,
-        supprimePar: { nom: "Moi", fonction: "Utilisateur", avatar: "M" },
+        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
         supprimeLe: new Date().toISOString(),
         supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         sourceData: task,
@@ -1160,26 +1312,47 @@ export default function ProjectDetailPage() {
   async function handleEventSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!eventForm.titre.trim() || !eventForm.dateDebut) return;
-    const ev: CalendarEvent = {
-      _id: editingEvent?._id || `ev_${Date.now()}`,
-      titre: eventForm.titre.trim(),
-      description: eventForm.description.trim(),
-      type: eventForm.type,
-      dateDebut: eventForm.dateDebut,
-      dateFin: eventForm.dateFin || eventForm.dateDebut,
-      employeId: eventForm.employeId || undefined,
-    };
-    if (editingEvent) {
-      setEvents(prev => prev.map(e => e._id === editingEvent._id ? ev : e));
-    } else {
-      setEvents(prev => [...prev, ev]);
+    try {
+      if (editingEvent) {
+        const res = await fetch(`/api/events/${editingEvent._id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(eventForm),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setEvents(prev => prev.map(e => e._id === editingEvent._id ? updated : e));
+          createActivity("event_updated", `a modifié l'événement « ${eventForm.titre} »`);
+        }
+      } else {
+        const res = await fetch("/api/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(eventForm),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          setEvents(prev => [...prev, created]);
+          createActivity("event_created", `a créé l'événement « ${eventForm.titre} »`);
+        }
+      }
+    } catch (err) {
+      console.error("Error saving event:", err);
     }
     setShowEventModal(false);
+    setEditingEvent(null);
   }
 
-  function handleEventDelete(eventId: string) {
+  async function handleEventDelete(eventId: string) {
     if (!confirm("Supprimer cet événement ?")) return;
-    setEvents(prev => prev.filter(e => e._id !== eventId));
+    try {
+      const res = await fetch(`/api/events/${eventId}`, { method: "DELETE" });
+      if (res.ok) {
+        setEvents(prev => prev.filter(e => e._id !== eventId));
+      }
+    } catch (err) {
+      console.error("Error deleting event:", err);
+    }
   }
 
   useEffect(() => {
@@ -1204,26 +1377,75 @@ export default function ProjectDetailPage() {
       .then((data) => setTasks(Array.isArray(data) ? data : []));
   }
 
+  function refreshEvents() {
+    fetch(`/api/events`)
+      .then((r) => r.json())
+      .then((data) => setEvents(Array.isArray(data) ? data : []));
+  }
+
+  const refreshActivities = useCallback(() => {
+    if (!id) return;
+    fetch(`/api/projects/${id}/activities`)
+      .then(r => r.json())
+      .then(data => { setProjectActivities(Array.isArray(data) ? data : []); })
+      .catch(() => {});
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
       fetch(`/api/projects/${id}`).then((r) => r.json()),
       fetch(`/api/tasks?projetId=${id}`).then((r) => r.json()).catch(() => []),
       fetch(`/api/team`).then((r) => r.json()).catch(() => []),
-      fetch(`/api/activities?projectId=${id}`).then((r) => r.json()).catch(() => []),
-    ]).then(([proj, taskData, teamData, actData]) => {
+      fetch(`/api/events`).then((r) => r.json()).catch(() => []),
+    ]).then(([proj, taskData, teamData, evData]) => {
       if (proj?._id) setProject(proj);
       setTasks(Array.isArray(taskData) ? taskData : []);
       setTeam(Array.isArray(teamData) ? teamData : []);
-      setActivities(Array.isArray(actData) ? actData : []);
+      setEvents(Array.isArray(evData) ? evData : []);
       setLoading(false);
     });
-  }, [id]);
+    refreshActivities();
+  }, [id, refreshActivities]);
+
+  async function createActivity(action: string, description: string) {
+    const optimistic: any = {
+      _id: "opt-" + Date.now(),
+      projectId: id || "",
+      userId: session?.user?.id || "",
+      userName: session?.user?.name || "",
+      userEmail: session?.user?.email || "",
+      action,
+      description,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    setProjectActivities(prev => [optimistic, ...prev]);
+    try {
+      await fetch(`/api/projects/${id}/activities`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, description }),
+      });
+      refreshActivities();
+    } catch (err) {
+      console.error("Failed to create activity", err);
+    }
+  }
 
   function formatDate(dateStr: string) {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString("fr-FR", {
       day: "numeric", month: "long", year: "numeric",
+    });
+  }
+
+  function formatDateTime(dateStr: string) {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("fr-FR", {
+      day: "numeric", month: "long", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
     });
   }
 
@@ -1570,7 +1792,7 @@ export default function ProjectDetailPage() {
           <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
             <h3 className="text-base font-semibold text-slate-900 mb-4">Activités récentes</h3>
             <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-1 before:h-[calc(100%-1rem)] before:w-[2px] before:bg-slate-100">
-              {activities.length === 0 ? (
+              {projectActivities.length === 0 ? (
                 [
                   { user: "Ahmed Ben Ali", action: "a créé une nouvelle tâche", time: "Il y a 2 heures", initials: "AB" },
                   { user: "Omayma Hoimdi", action: "a complété une tâche", time: "Il y a 4 heures", initials: "OH" },
@@ -1589,14 +1811,18 @@ export default function ProjectDetailPage() {
                   </div>
                 ))
               ) : (
-                activities.map((act) => (
+                projectActivities.slice(0, 5).map((act: any) => (
                   <div key={act._id} className="relative flex items-start gap-3">
                     <div className="absolute -left-[18px] flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-600 text-[9px] font-bold ring-2 ring-white">
-                      {act.userId?.slice(0, 2) || "AF"}
+                      {(act.userName || "S").slice(0, 2).toUpperCase() || "AF"}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-700">{act.action}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{new Date(act.createdAt).toLocaleString("fr-FR")}</p>
+                      <p className="text-sm text-slate-700">
+                        <span className="font-medium text-slate-900">{act.userName || "Système"}</span>
+                        {act.userEmail && <span className="text-xs text-slate-400 ml-1.5">({act.userEmail})</span>}
+                        {" "}{act.description || act.action}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">{formatDiscussionShortDate(act.createdAt)}</p>
                     </div>
                   </div>
                 ))
@@ -2321,8 +2547,11 @@ export default function ProjectDetailPage() {
                         return eDate === dayStr || (e.dateFin?.split("T")[0] >= dayStr && e.dateDebut?.split("T")[0] <= dayStr);
                       });
                       const dayTasks = tasks.filter(t => {
-                        const td = t.dateFin?.split("T")[0];
-                        return td === dayStr;
+                        const tStart = t.dateDebut?.split("T")[0];
+                        const tEnd = t.dateFin?.split("T")[0];
+                        if (tStart && tEnd) return tStart <= dayStr && tEnd >= dayStr;
+                        if (tEnd && !tStart) return tEnd === dayStr;
+                        return false;
                       });
                       const isToday = day === new Date().getDate() && calDate.getMonth() === new Date().getMonth() && calDate.getFullYear() === new Date().getFullYear();
                       const isCurrentMonth = day > 0 && day <= daysInMonth;
@@ -2363,28 +2592,74 @@ export default function ProjectDetailPage() {
                             {day > 0 && day <= daysInMonth ? day : ""}
                           </div>
                           <div className="space-y-0.5">
-                            {dayEvents.slice(0, 2).map(ev => (
-                              <div key={ev._id} draggable
-                                onDragStart={(e) => { e.dataTransfer.setData("eventId", ev._id); }}
-                                className={`text-[9px] px-1.5 py-0.5 rounded truncate font-medium cursor-grab active:cursor-grabbing
-                                  ${ev.type === "Réunion" ? "bg-blue-100 text-blue-700" :
-                                    ev.type === "Développement" ? "bg-purple-100 text-purple-700" :
-                                    ev.type === "Conception" ? "bg-orange-100 text-orange-700" :
-                                    ev.type === "Intégration" ? "bg-cyan-100 text-cyan-700" :
-                                    ev.type === "Tests" ? "bg-emerald-100 text-emerald-700" :
-                                    ev.type === "Déploiement" ? "bg-pink-100 text-pink-700" :
-                                    "bg-slate-100 text-slate-600"}`}
-                              >{ev.titre}</div>
-                            ))}
+                            {(() => {
+                              const epal = ['bg-violet-500','bg-sky-500','bg-lime-500','bg-fuchsia-500','bg-yellow-500','bg-rose-500','bg-slate-500','bg-indigo-500','bg-teal-500','bg-amber-500'];
+                              return dayEvents.slice(0, 2).map(ev => {
+                                const es = ev.dateDebut?.split("T")[0];
+                                const ee = ev.dateFin?.split("T")[0];
+                                let gS = false, gE = false, gN = false;
+                                if (es && ee) {
+                                  const sm = new Date(es).getTime(), em = new Date(ee).getTime(), cm = new Date(dayStr).getTime();
+                                  const tot = Math.round((em - sm) / 86400000) + 1;
+                                  const idx = Math.round((cm - sm) / 86400000);
+                                  gS = idx === 0; gE = idx === tot - 1; gN = tot <= 1 || idx === Math.floor(tot / 2);
+                                } else { gS = true; gE = true; gN = true; }
+                                const ec = epal[Math.abs(ev._id.split('').reduce((h,c) => ((h << 5) - h) + c.charCodeAt(0), 0)) % epal.length];
+                                return (
+                                  <div key={ev._id} draggable
+                                    onDragStart={(e) => { e.dataTransfer.setData("eventId", ev._id); }}
+                                    className={`h-5 flex items-center ${ec} text-white text-[9px] font-medium leading-none cursor-grab active:cursor-grabbing`}
+                                    style={{
+                                      marginLeft: gS ? 0 : '-6px', marginRight: gE ? 0 : '-6px',
+                                      paddingLeft: gS ? '6px' : 0, paddingRight: gE ? '6px' : 0,
+                                      borderRadius: gS && gE ? '9999px' : gS ? '9999px 0 0 9999px' : gE ? '0 9999px 9999px 0' : '0',
+                                    }}
+                                  >{gN && <span className="truncate px-1">{ev.titre}</span>}</div>
+                                );
+                              });
+                            })()}
                             {dayEvents.length > 2 && (
                               <span className="text-[9px] text-violet-600 font-medium px-1">+{dayEvents.length - 2} autres</span>
                             )}
-                            {dayTasks.filter(t => t.dateFin?.split("T")[0] === dayStr && t.statut !== "Terminée").slice(0, 1).map(t => (
-                              <div key={t._id} className="text-[9px] px-1.5 py-0.5 rounded truncate bg-red-50 text-red-600 font-medium">
-                                {t.titre}
-                              </div>
-                            ))}
-                          </div>
+                            {(() => {
+                              const pal = ['bg-red-500','bg-blue-500','bg-emerald-500','bg-purple-500','bg-orange-500','bg-cyan-500','bg-pink-500','bg-teal-500','bg-indigo-500','bg-amber-500'];
+return dayTasks.slice(0, 2).map(t => {
+                const ts = t.dateDebut?.split("T")[0];
+                const te = t.dateFin?.split("T")[0];
+                let gStart = false, gEnd = false, gName = false;
+                if (ts && te) {
+                  const sm = new Date(ts).getTime();
+                  const em = new Date(te).getTime();
+                  const cm = new Date(dayStr).getTime();
+                  const tot = Math.round((em - sm) / 86400000) + 1;
+                  const idx = Math.round((cm - sm) / 86400000);
+                  gStart = idx === 0;
+                  gEnd = idx === tot - 1;
+                  gName = tot <= 1 || idx === Math.floor(tot / 2);
+                } else {
+                  gStart = true; gEnd = true; gName = true;
+                }
+                const tc = pal[Math.abs(t._id.split('').reduce((h,c) => ((h << 5) - h) + c.charCodeAt(0), 0)) % pal.length];
+                const done = t.statut === "Terminée";
+                return (
+                <div key={t._id}
+                  className={`h-5 flex items-center ${tc} ${done ? 'opacity-50' : ''} text-white text-[9px] font-medium leading-none`}
+                  style={{
+                    marginLeft: gStart ? 0 : '-6px',
+                    marginRight: gEnd ? 0 : '-6px',
+                    paddingLeft: gStart ? '6px' : 0,
+                    paddingRight: gEnd ? '6px' : 0,
+                    borderRadius: gStart && gEnd ? '9999px' :
+                                  gStart ? '9999px 0 0 9999px' :
+                                  gEnd ? '0 9999px 9999px 0' : '0',
+                  }}
+                >
+                  {gName && <span className={`truncate px-1 ${done ? 'line-through' : ''}`}>{t.titre}</span>}
+                </div>
+              );
+            });
+          })()}
+          </div>
                         </div>
                       );
                     })}
@@ -2649,9 +2924,9 @@ export default function ProjectDetailPage() {
           ) : fileViewMode === "list" ? (
             hasFileFilters ? (
               /* Flat filtered results */
-              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-                <div className="grid grid-cols-[32px_minmax(0,1fr)_160px_80px_100px_140px_60px] gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  <div></div><div>Nom</div><div>Propriétaire</div><div>Type</div><div>Taille</div><div>Modifié le</div><div></div>
+              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-x-auto">
+                <div className="grid grid-cols-[32px_minmax(0,1fr)_100px_60px_70px_100px_40px] gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <div></div><div>Nom</div><div>Propriétaire</div><div>Type</div><div>Taille</div><div>Modifié le</div><div className="sticky right-0 bg-slate-50/50"></div>
                 </div>
                 {filePaginated.map(file => {
                   const FileIcon = getFileIcon(file.type);
@@ -2661,9 +2936,9 @@ export default function ProjectDetailPage() {
                     <div key={file.id}
                       draggable
                       onDragStart={(e) => { e.dataTransfer.setData("fileId", file.id); }}
-                      onContextMenu={(e) => { e.preventDefault(); setFileContextMenu({ x: e.clientX, y: e.clientY, fileId: file.id }); }}
+                      onContextMenu={(e) => openFileContextMenu(e, file.id)}
                       onClick={() => toggleFileSelect(file.id)}
-                      className={`grid grid-cols-[32px_minmax(0,1fr)_160px_80px_100px_140px_60px] gap-2 items-center border-b border-slate-50 px-4 py-2.5 cursor-pointer transition-all hover:bg-violet-50/30 ${isSelected ? "bg-violet-50/50" : ""}`}
+                      className={`grid grid-cols-[32px_minmax(0,1fr)_100px_60px_70px_100px_40px] gap-2 items-center border-b border-slate-50 px-4 py-2.5 cursor-pointer transition-all hover:bg-violet-50/30 ${isSelected ? "bg-violet-50/50" : ""}`}
                     >
                       <input type="checkbox" checked={isSelected} onChange={() => toggleFileSelect(file.id)}
                         className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
@@ -2678,7 +2953,7 @@ export default function ProjectDetailPage() {
                             className="rounded-lg border border-violet-400 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-violet-100"
                             autoFocus onClick={(e) => e.stopPropagation()} />
                         ) : (
-                          <span className="text-sm font-medium text-slate-800 truncate">{file.name}</span>
+                          <span className="text-sm font-medium text-slate-800 whitespace-nowrap">{file.name}</span>
                         )}
                         {file.favorite && <StarIcon size={12} className="fill-amber-400 text-amber-400 shrink-0" />}
                         {file.shared && <Share2 size={12} className="text-blue-400 shrink-0" />}
@@ -2687,13 +2962,16 @@ export default function ProjectDetailPage() {
                         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-purple-100 text-[9px] font-bold text-violet-700">
                           {file.ownerAvatar}
                         </div>
-                        <span className="text-xs text-slate-600 truncate">{file.owner}</span>
+                        <div className="min-w-0">
+                          <span className="text-xs text-slate-600 whitespace-nowrap">{file.owner}</span>
+                          {file.ownerEmail && <span className="text-[10px] text-slate-400 block truncate">{file.ownerEmail}</span>}
+                        </div>
                       </div>
                       <span className="text-xs font-medium text-slate-500">{file.type}</span>
                       <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
                       <span className="text-xs text-slate-500">{formatFileDate(file.lastModified)}</span>
-                      <button onClick={(e) => { e.stopPropagation(); setFileContextMenu({ x: e.clientX, y: e.clientY, fileId: file.id }); }}
-                        className="rounded-lg p-1.5 text-slate-300 hover:opacity-100 hover:bg-slate-100 hover:text-slate-600 transition-all">
+                        <button onClick={(e) => openFileContextMenu(e, file.id)}
+                          className="sticky right-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all">
                         <MoreHorizontal size={14} />
                       </button>
                     </div>
@@ -2702,9 +2980,9 @@ export default function ProjectDetailPage() {
               </div>
             ) : (
               /* Folder structure */
-              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-                <div className="grid grid-cols-[32px_minmax(0,1fr)_160px_80px_100px_140px_60px] gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  <div></div><div>Nom</div><div>Propriétaire</div><div>Type</div><div>Taille</div><div>Modifié le</div><div></div>
+              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-x-auto">
+                <div className="grid grid-cols-[32px_minmax(0,1fr)_100px_60px_70px_100px_40px] gap-2 border-b border-slate-100 bg-slate-50/50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <div></div><div>Nom</div><div>Propriétaire</div><div>Type</div><div>Taille</div><div>Modifié le</div><div className="sticky right-0 bg-slate-50/50"></div>
                 </div>
                 {folders.map(folder => (
                   <div key={folder.id}>
@@ -2712,7 +2990,7 @@ export default function ProjectDetailPage() {
                       onDragOver={(e) => { e.preventDefault(); setFileDragOverFolder(folder.id); }}
                       onDragLeave={() => setFileDragOverFolder(null)}
                       onDrop={(e) => handleFileDrop(e, folder.id)}
-                      className={`grid grid-cols-[32px_minmax(0,1fr)_160px_80px_100px_140px_60px] gap-2 items-center border-b border-slate-50 px-4 py-3 cursor-pointer transition-all hover:bg-slate-50/50 ${fileDragOverFolder === folder.id ? "bg-violet-50/50 ring-2 ring-violet-200 ring-inset" : ""}`}
+                      className={`grid grid-cols-[32px_minmax(0,1fr)_100px_60px_70px_100px_40px] gap-2 items-center border-b border-slate-50 px-4 py-3 cursor-pointer transition-all hover:bg-slate-50/50 ${fileDragOverFolder === folder.id ? "bg-violet-50/50 ring-2 ring-violet-200 ring-inset" : ""}`}
                       onClick={() => toggleFolder(folder.id)}
                     >
                       <button className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
@@ -2727,17 +3005,17 @@ export default function ProjectDetailPage() {
                             className="rounded-lg border border-violet-400 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-violet-100"
                             autoFocus onClick={(e) => e.stopPropagation()} />
                         ) : (
-                          <span className="text-sm font-semibold text-slate-800 truncate">{folder.name}</span>
+                          <span className="text-sm font-semibold text-slate-800 whitespace-nowrap">{folder.name}</span>
                         )}
                         <span className="text-[11px] text-slate-400 shrink-0">({folder.files.length} fichier{folder.files.length > 1 ? "s" : ""})</span>
                       </div>
-                      <div className="text-xs text-slate-400">—</div>
-                      <div className="text-xs text-slate-400">—</div>
-                      <div className="text-xs text-slate-400">—</div>
-                      <div className="text-xs text-slate-400">—</div>
-                      <button onClick={(e) => { e.stopPropagation(); setFileContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id }); }}
-                        className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600 transition-all">
-                        <MoreHorizontal size={14} />
+                      <div className="text-xs text-slate-200">—</div>
+                      <div className="text-xs text-slate-200">—</div>
+                      <div className="text-xs text-slate-200">—</div>
+                      <div className="text-xs text-slate-200">—</div>
+                      <button onClick={(e) => openFileContextMenu(e, folder.id)}
+                        className="sticky right-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all">
+                        <MoreHorizontal size={18} />
                       </button>
                     </div>
                     {expandedFolders.has(folder.id) && folder.files.map(file => {
@@ -2748,9 +3026,9 @@ export default function ProjectDetailPage() {
                         <div key={file.id}
                           draggable
                           onDragStart={(e) => { e.dataTransfer.setData("fileId", file.id); }}
-                          onContextMenu={(e) => { e.preventDefault(); setFileContextMenu({ x: e.clientX, y: e.clientY, fileId: file.id }); }}
+                          onContextMenu={(e) => openFileContextMenu(e, file.id)}
                           onClick={() => toggleFileSelect(file.id)}
-                          className={`grid grid-cols-[32px_minmax(0,1fr)_160px_80px_100px_140px_60px] gap-2 items-center border-b border-slate-50 px-4 py-2.5 cursor-pointer transition-all hover:bg-violet-50/30 ${isSelected ? "bg-violet-50/50" : ""}`}
+                          className={`grid grid-cols-[32px_minmax(0,1fr)_100px_60px_70px_100px_40px] gap-2 items-center border-b border-slate-50 px-4 py-2.5 cursor-pointer transition-all hover:bg-violet-50/30 ${isSelected ? "bg-violet-50/50" : ""}`}
                         >
                           <input type="checkbox" checked={isSelected} onChange={() => toggleFileSelect(file.id)}
                             className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
@@ -2765,7 +3043,7 @@ export default function ProjectDetailPage() {
                                 className="rounded-lg border border-violet-400 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-violet-100"
                                 autoFocus onClick={(e) => e.stopPropagation()} />
                             ) : (
-                              <span className="text-sm font-medium text-slate-800 truncate">{file.name}</span>
+                              <span className="text-sm font-medium text-slate-800 whitespace-nowrap">{file.name}</span>
                             )}
                             {file.favorite && <StarIcon size={12} className="fill-amber-400 text-amber-400 shrink-0" />}
                             {file.shared && <Share2 size={12} className="text-blue-400 shrink-0" />}
@@ -2774,13 +3052,13 @@ export default function ProjectDetailPage() {
                             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-purple-100 text-[9px] font-bold text-violet-700">
                               {file.ownerAvatar}
                             </div>
-                            <span className="text-xs text-slate-600 truncate">{file.owner}</span>
+                            <span className="text-xs text-slate-600 whitespace-nowrap">{file.owner}</span>
                           </div>
                           <span className="text-xs font-medium text-slate-500">{file.type}</span>
                           <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
                           <span className="text-xs text-slate-500">{formatFileDate(file.lastModified)}</span>
-                          <button onClick={(e) => { e.stopPropagation(); setFileContextMenu({ x: e.clientX, y: e.clientY, fileId: file.id }); }}
-                            className="rounded-lg p-1.5 text-slate-300 hover:opacity-100 hover:bg-slate-100 hover:text-slate-600 transition-all">
+                          <button onClick={(e) => openFileContextMenu(e, file.id)}
+                            className="sticky right-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all">
                             <MoreHorizontal size={14} />
                           </button>
                         </div>
@@ -2944,14 +3222,16 @@ export default function ProjectDetailPage() {
                     id: "f" + Date.now(),
                     name: file.name.replace("." + ext.toLowerCase(), ""),
                     type: ["PDF","DOCX","PPTX","ZIP","JPG","PNG","FIG","XLSX"].includes(ext) ? ext : "PDF",
-                    size: file.size, owner: "Omayma Hoimdi", ownerAvatar: "OH",
+                    size: file.size, owner: session?.user?.name || "Omayma Hoimdi", ownerEmail: session?.user?.email || "", ownerAvatar: session?.user?.name?.split(" ").map((s: string) => s[0]).join("").toUpperCase().slice(0, 2) || "OH",
                     lastModified: new Date().toISOString(), folderId: fileUploadFolder,
                     favorite: false, shared: false, data,
                   };
                   setFolders(prev => prev.map(f => f.id === fileUploadFolder ? { ...f, files: [...f.files, newFile] } : f));
                   setShowFileUploadModal(false);
+                  createActivity("file_uploaded", `a importé le fichier « ${newFile.name}.${newFile.type.toLowerCase()} »`);
                 }}
-              >
+
+                >
                 <Upload size={36} className="mx-auto mb-3 text-slate-300" />
                 <p className="text-sm font-medium text-slate-700 mb-1">Déposez vos fichiers ici</p>
                 <p className="text-xs text-slate-400 mb-4">ou cliquez pour parcourir</p>
@@ -2966,13 +3246,14 @@ export default function ProjectDetailPage() {
                         id: "f" + Date.now() + Math.random(),
                         name: file.name.replace("." + ext.toLowerCase(), ""),
                         type: ["PDF","DOCX","PPTX","ZIP","JPG","PNG","FIG","XLSX"].includes(ext) ? ext : "PDF",
-                        size: file.size, owner: "Omayma Hoimdi", ownerAvatar: "OH",
+                        size: file.size, owner: session?.user?.name || "Omayma Hoimdi", ownerEmail: session?.user?.email || "", ownerAvatar: session?.user?.name?.split(" ").map((s: string) => s[0]).join("").toUpperCase().slice(0, 2) || "OH",
                         lastModified: new Date().toISOString(), folderId: fileUploadFolder,
                         favorite: false, shared: false, data,
                       };
                     }));
                     setFolders(prev => prev.map(f => f.id === fileUploadFolder ? { ...f, files: [...f.files, ...newFiles] } : f));
                     setShowFileUploadModal(false);
+                    newFiles.forEach(nf => createActivity("file_uploaded", `a importé le fichier « ${nf.name}.${nf.type.toLowerCase()} »`));
                   }} />
                 </label>
               </div>
@@ -3135,6 +3416,7 @@ export default function ProjectDetailPage() {
                       <div className="flex gap-2">
                         <button onClick={() => {
                         if (!file) return;
+                        createActivity("file_downloaded", `a téléchargé le fichier « ${file.name}.${file.type.toLowerCase()} »`);
                         if (file.data) {
                           const a = document.createElement("a"); a.href = file.data; a.download = file.name + "." + file.type.toLowerCase(); a.click();
                         } else {
@@ -3287,10 +3569,11 @@ export default function ProjectDetailPage() {
                             {msg.userAvatar}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-semibold text-slate-800">{msg.userName}</span>
+                              <span className="text-[10px] text-indigo-500 font-medium">{msg.userEmail || "email@exemple.com"}</span>
                               <span className="text-[10px] text-slate-400">{formatDiscussionShortDate(msg.time)}</span>
-                              {msg.edited && <span className="text-[9px] text-slate-300">(modifié)</span>}
+                              {msg.edited && <span className="text-[9px] text-slate-400">(modifié)</span>}
                             </div>
                             {isEditing ? (
                               <div className="mt-1 flex gap-2">
@@ -3530,213 +3813,41 @@ export default function ProjectDetailPage() {
 
       {/* TAB: Activités */}
       {activeTab === "Activités" && (
-        <div className="flex gap-6">
-          {/* Main timeline */}
-          <div className="flex-1 min-w-0 space-y-4">
-            {/* Filters */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative">
-                  <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <select value={activityFilterType} onChange={(e) => { setActivityFilterType(e.target.value); setActivityPage(1); }}
-                    className="rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs outline-none focus:border-violet-400 appearance-none cursor-pointer">
-                    <option value="">Toutes les activités</option>
-                    <option value="tache">Tâches</option>
-                    <option value="fichier">Fichiers</option>
-                    <option value="commentaire">Commentaires</option>
-                    <option value="calendrier">Calendrier</option>
-                    <option value="equipe">Équipe</option>
-                    <option value="budget">Budget</option>
-                  </select>
-                </div>
-                <div className="relative">
-                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <select value={activityFilterMember} onChange={(e) => { setActivityFilterMember(e.target.value); setActivityPage(1); }}
-                    className="rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs outline-none focus:border-violet-400 appearance-none cursor-pointer">
-                    <option value="">Tous les membres</option>
-                    {[...new Set(activityEntries.map(a => a.user))].map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-                <input type="date" value={activityDateStart} onChange={(e) => { setActivityDateStart(e.target.value); setActivityPage(1); }}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-violet-400" />
-                <span className="text-xs text-slate-400">→</span>
-                <input type="date" value={activityDateEnd} onChange={(e) => { setActivityDateEnd(e.target.value); setActivityPage(1); }}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-violet-400" />
-                <div className="relative flex-1 min-w-[160px]">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input value={activitySearch} onChange={(e) => { setActivitySearch(e.target.value); setActivityPage(1); }}
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-violet-400"
-                    placeholder="Rechercher une activité..." />
-                </div>
-                <button className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
-                  <Filter size={13} /> Filtres avancés
-                </button>
-              </div>
+        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900 mb-5">
+            Toutes les activités ({projectActivities.length})
+          </h2>
+          {projectActivities.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400">
+              <Activity size={40} className="mx-auto mb-3 text-slate-300" />
+              Aucune activité
             </div>
-
-            {/* Timeline */}
-            {groupedActivities.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                <Activity size={48} className="mb-3 opacity-30" />
-                <p className="text-sm font-medium text-slate-500">Aucune activité</p>
-                <p className="text-xs text-slate-300 mt-1">Aucune activité ne correspond aux filtres sélectionnés</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {groupedActivities.map(group => (
-                  <div key={group.date}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="h-px flex-1 bg-slate-100" />
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{group.label}</span>
-                      <div className="h-px flex-1 bg-slate-100" />
-                    </div>
-                    <div className="space-y-2">
-                      {group.items.map(item => {
-                        const badgeStyles: Record<string, string> = {
-                          tache: "bg-violet-50 text-violet-700 border-violet-200",
-                          fichier: "bg-blue-50 text-blue-700 border-blue-200",
-                          commentaire: "bg-pink-50 text-pink-700 border-pink-200",
-                          calendrier: "bg-orange-50 text-orange-700 border-orange-200",
-                          equipe: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                          budget: "bg-red-50 text-red-700 border-red-200",
-                        };
-                        const badgeColors: Record<string, string> = {
-                          tache: "bg-violet-500", fichier: "bg-blue-500", commentaire: "bg-pink-500",
-                          calendrier: "bg-orange-500", equipe: "bg-emerald-500", budget: "bg-red-500",
-                        };
-                        const badgeLabels: Record<string, string> = {
-                          tache: "Tâche", fichier: "Fichier", commentaire: "Commentaire",
-                          calendrier: "Calendrier", equipe: "Équipe", budget: "Budget",
-                        };
-                        const badgeIcons: Record<string, any> = {
-                          tache: CheckSquare, fichier: FileText, commentaire: MessageCircle,
-                          calendrier: Calendar, equipe: Users, budget: DollarSign,
-                        };
-                        const BadgeIcon = badgeIcons[item.type];
-                        return (
-                          <div key={item.id} className="group relative flex gap-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-slate-200">
-                            {/* Timeline indicator */}
-                            <div className="flex flex-col items-center shrink-0">
-                              <div className={`h-3 w-3 rounded-full ${badgeColors[item.type]} ring-4 ring-white shadow-sm`} />
-                              <div className="w-px flex-1 bg-slate-100 mt-1" />
-                            </div>
-                            {/* Avatar */}
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-purple-100 text-violet-600 text-sm font-bold`}>
-                              {item.userAvatar}
-                            </div>
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <span className="text-sm font-semibold text-slate-900">{item.user}</span>
-                                  <span className="text-sm text-slate-600"> {item.action}</span>
-                                  <p className="text-sm font-medium text-slate-900 mt-0.5">{item.target}</p>
-                                  {item.details && <p className="text-xs text-slate-500 mt-1 italic">{item.details}</p>}
-                                  {item.oldValue && item.newValue && (
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 line-through">{item.oldValue}</span>
-                                      <ChevronRight size={12} className="text-slate-400" />
-                                      <span className="rounded-md bg-violet-50 px-2 py-0.5 text-[10px] text-violet-700 font-medium">{item.newValue}</span>
-                                    </div>
-                                  )}
-                                </div>
-                                <span className={`shrink-0 inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[10px] font-medium ${badgeStyles[item.type]}`}>
-                                  <BadgeIcon size={11} /> {badgeLabels[item.type]}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-400 mt-1.5">{formatDiscussionShortDate(item.timestamp)}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
+          ) : (
+            <div className="relative space-y-0">
+              {[...projectActivities].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((act: any, i: number) => (
+                <div key={act._id} className="relative flex gap-4 pb-6 last:pb-0">
+                  {i < projectActivities.length - 1 && (
+                    <div className="absolute left-[15px] top-8 bottom-0 w-0.5 bg-slate-200" />
+                  )}
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 z-10">
+                    <Activity size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-800">{act.action}</p>
+                    <p className="text-sm text-slate-500 mt-0.5">{act.description}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs font-medium text-indigo-600">{act.userName || "Utilisateur"}</span>
+                      {act.userEmail && <span className="text-xs text-slate-400">{act.userEmail}</span>}
+                      {act.userEmail && <span className="text-xs text-slate-300">•</span>}
+                      <span className="text-xs text-slate-400 flex items-center gap-1">
+                        <Clock size={11} /> {formatDateTime(act.createdAt)}
+                      </span>
                     </div>
                   </div>
-                ))}
-                {/* Load more */}
-                {hasMoreActivities && (
-                  <div className="text-center pt-2">
-                    <button onClick={() => setActivityPage(prev => prev + 1)}
-                      className="rounded-xl border border-slate-200 px-6 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition">
-                      Afficher plus d'activités ({totalActivities - activityPage * pageSizeActivities} restantes)
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Right sidebar */}
-          <div className="w-72 shrink-0 space-y-4 hidden lg:block">
-            {/* Summary */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900 mb-4">Résumé des activités</h3>
-              <div className="space-y-3">
-                {[
-                  { label: "Tâches créées", value: activitySummary.taches, icon: CheckSquare, color: "text-violet-600", bg: "bg-violet-50" },
-                  { label: "Fichiers ajoutés", value: activitySummary.fichiers, icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
-                  { label: "Commentaires", value: activitySummary.commentaires, icon: MessageCircle, color: "text-pink-600", bg: "bg-pink-50" },
-                  { label: "Événements créés", value: activitySummary.evenements, icon: Calendar, color: "text-orange-600", bg: "bg-orange-50" },
-                  { label: "Membres ajoutés", value: activitySummary.equipe, icon: UserPlus, color: "text-emerald-600", bg: "bg-emerald-50" },
-                ].map(({ label, value, icon: Icon, color, bg }) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`rounded-lg ${bg} p-2 ${color}`}><Icon size={14} /></div>
-                      <span className="text-xs text-slate-600">{label}</span>
-                    </div>
-                    <span className="text-sm font-bold text-slate-900">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Activity by member (donut) */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900 mb-4">Activité par membre</h3>
-              <div className="flex items-center gap-4">
-                <div className="shrink-0">
-                  <ResponsiveContainer width={100} height={100}>
-                    <PieChart>
-                      <Pie data={activityByMember} dataKey="value" cx={50} cy={50} innerRadius={28} outerRadius={45} strokeWidth={0}>
-                        {activityByMember.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
                 </div>
-                <div className="flex-1 space-y-1.5">
-                  {activityByMember.map((m, i) => (
-                    <div key={m.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                        <span className="text-[11px] text-slate-600">{m.name}</span>
-                      </div>
-                      <span className="text-[11px] font-semibold text-slate-800">{m.value}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
-
-            {/* Most frequent */}
-            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900 mb-4">Activités les plus fréquentes</h3>
-              <div className="space-y-3">
-                {frequentActivities.map(([type, count], i) => {
-                  const freqLabels: Record<string, string> = { fichiers: "Fichiers ajoutés", commentaires: "Commentaires", taches: "Tâches créées", evenements: "Événements créés" };
-                  const freqIcons: Record<string, any> = { fichiers: Upload, commentaires: MessageCircle, taches: CheckSquare, evenements: Calendar };
-                  const freqColors: Record<string, string> = { fichiers: "text-blue-600 bg-blue-50", commentaires: "text-pink-600 bg-pink-50", taches: "text-violet-600 bg-violet-50", evenements: "text-orange-600 bg-orange-50" };
-                  const FreqIcon = freqIcons[type];
-                  return (
-                    <div key={type} className="flex items-center gap-3">
-                      <span className="text-xs font-bold text-slate-300 w-4">{i + 1}</span>
-                      <div className={`rounded-lg p-1.5 ${freqColors[type]}`}><FreqIcon size={12} /></div>
-                      <span className="flex-1 text-xs text-slate-600">{freqLabels[type]}</span>
-                      <span className="text-sm font-bold text-slate-900">{count}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
 

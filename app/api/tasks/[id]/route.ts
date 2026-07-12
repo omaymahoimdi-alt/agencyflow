@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
-import Task from "@/models/Task";
 import { MockTask } from "@/lib/mock-db";
+import { logActivity } from "@/lib/activity";
+import { createNotification } from "@/lib/notifications";
 
 const STATUTS = ["À faire", "En cours", "Terminée", "Bloquée"] as const;
 const PRIORITES = ["Faible", "Moyenne", "Haute", "Urgente"] as const;
@@ -28,20 +28,11 @@ const validateTaskServer = (data: any) => {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const { id } = await params;
-    let task;
-    try {
-      await connectDB();
-      task = await Task.findById(id)
-        .populate("projetId", "titre")
-        .populate("employeId", "nom prenom");
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB");
-      task = await MockTask.findById(id);
-    }
+    const task = await MockTask.findById(id);
     if (!task) return NextResponse.json({ message: "Tâche non trouvée" }, { status: 404 });
     return NextResponse.json(task);
   } catch (error) {
@@ -52,7 +43,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const { id } = await params;
@@ -61,17 +52,30 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (Object.keys(validationErrors).length > 0) {
       return NextResponse.json({ message: "Erreur de validation", errors: validationErrors }, { status: 400 });
     }
-    let task;
-    try {
-      await connectDB();
-      task = await Task.findByIdAndUpdate(id, body, { new: true })
-        .populate("projetId", "titre")
-        .populate("employeId", "nom prenom");
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB to update task");
-      task = await MockTask.findByIdAndUpdate(id, body);
-    }
+    const oldTask = await MockTask.findById(id);
+    const task = await MockTask.findByIdAndUpdate(id, body);
     if (!task) return NextResponse.json({ message: "Tâche non trouvée" }, { status: 404 });
+    const oldTitle = oldTask?.titre || task.titre;
+    await logActivity({
+      workspaceId: session.user.workspaceId,
+      userId: session.user.id,
+      userName: session.user.name || "",
+      userEmail: session.user.email || "",
+      entityType: "task",
+      entityId: id,
+      entityName: oldTitle,
+      action: body.statut && body.statut !== oldTask?.statut ? `status_${body.statut}` : "updated",
+    });
+    if (body.employeId && body.employeId !== session.user.id && body.employeId !== oldTask?.employeId) {
+      await createNotification({
+        workspaceId: session.user.workspaceId,
+        userId: body.employeId,
+        type: "task_assigned",
+        title: `Tâche assignée : ${task.titre}`,
+        fromUserId: session.user.id,
+        fromUserName: session.user.name || "",
+      });
+    }
     return NextResponse.json(task);
   } catch (error) {
     console.error("Error updating task:", error);
@@ -82,19 +86,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const { id } = await params;
-    let task;
-    try {
-      await connectDB();
-      task = await Task.findByIdAndDelete(id);
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB to delete task");
-      task = await MockTask.findByIdAndDelete(id);
-    }
+    const task = await MockTask.findByIdAndDelete(id);
     if (!task) return NextResponse.json({ message: "Tâche non trouvée" }, { status: 404 });
+    const deletedTitle = task.titre || "";
+    await logActivity({
+      workspaceId: session.user.workspaceId,
+      userId: session.user.id,
+      userName: session.user.name || "",
+      userEmail: session.user.email || "",
+      entityType: "task",
+      entityId: id,
+      entityName: deletedTitle,
+      action: "deleted",
+    });
     return NextResponse.json({ message: "Tâche supprimée" });
   } catch (error) {
     console.error("Error deleting task:", error);

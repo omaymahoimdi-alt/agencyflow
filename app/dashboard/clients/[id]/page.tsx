@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { addToCorbeille } from "@/lib/corbeille";
 import {
   ArrowLeft, Star, Mail, Phone, MapPin, Globe, Building2,
   MoreVertical, Pencil, Trash2, Send, Paperclip, Bell,
@@ -36,6 +38,8 @@ interface ClientActivity {
   _id: string;
   clientId: string;
   userId: string;
+  userName?: string;
+  userEmail?: string;
   action: string;
   description: string;
   createdAt: string;
@@ -45,6 +49,8 @@ interface ClientComment {
   _id: string;
   clientId: string;
   userId: string;
+  userName?: string;
+  userEmail?: string;
   comment: string;
   createdAt: string;
 }
@@ -57,6 +63,8 @@ interface ClientDocument {
   fileUrl: string;
   fileSize: number;
   uploadedBy: string;
+  uploadedByName?: string;
+  uploadedByEmail?: string;
   createdAt: string;
 }
 
@@ -69,6 +77,9 @@ interface ClientReminder {
   endDate?: string;
   priority: string;
   status: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdByEmail?: string;
   createdAt: string;
 }
 
@@ -82,6 +93,9 @@ interface ClientEmail {
   status: string;
   attachmentUrl?: string;
   attachmentName?: string;
+  sentBy?: string;
+  sentByName?: string;
+  sentByEmail?: string;
   createdAt: string;
 }
 
@@ -322,6 +336,43 @@ function scoreToColor(score: number) {
   return { text: "text-red-500", ring: "#ef4444", bg: "bg-red-50" };
 }
 
+const TEAM_MEMBERS = [
+  { id: "u1", prenom: "Amira", nom: "Ben Salah", email: "amira.bensalah@agencyflow.com" },
+  { id: "u2", prenom: "Karim", nom: "Aouadi", email: "karim.aouadi@agencyflow.com" },
+  { id: "u3", prenom: "Omayma", nom: "Hoimdi", email: "omayma.hoimdi@agencyflow.com" },
+  { id: "u4", prenom: "Youssef", nom: "El Amrani", email: "youssef.amrani@agencyflow.com" },
+  { id: "u5", prenom: "Sara", nom: "Benali", email: "sara.benali@agencyflow.com" },
+  { id: "u6", prenom: "Mohamed", nom: "Salah", email: "mohamed.salah@agencyflow.com" },
+  { id: "u7", prenom: "Nadia", nom: "Mouline", email: "nadia.mouline@agencyflow.com" },
+  { id: "u8", prenom: "Hassan", nom: "Tazi", email: "hassan.tazi@agencyflow.com" },
+];
+
+const CURRENT_USER = { id: "current-user", prenom: "Omayma", nom: "Hoimdi", email: "omayma.hoimdi@esprit.tn" };
+
+function getSessionUser(session: any) {
+  if (!session?.user?.email) return null;
+  const m = TEAM_MEMBERS.find(m => m.email === session.user.email);
+  if (m) return m;
+  const name = session.user.name || "";
+  const parts = name.split(" ");
+  return {
+    id: session.user.email,
+    prenom: parts[0] || name,
+    nom: parts.slice(1).join(" ") || "",
+    email: session.user.email,
+  };
+}
+
+function getUserInfo(idOrEmail: string, fallback?: { prenom?: string; nom?: string; email?: string }) {
+  if (!idOrEmail) return fallback || CURRENT_USER;
+  if (idOrEmail === "current-user") return CURRENT_USER;
+  if (idOrEmail === "contact@agencyflow.com") return CURRENT_USER;
+  const member = TEAM_MEMBERS.find(m => m.id === idOrEmail || m.email === idOrEmail);
+  if (member) return member;
+  if (fallback) return { ...CURRENT_USER, ...fallback };
+  return CURRENT_USER;
+}
+
 const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "overview", label: "Vue d'ensemble", icon: Eye },
   { key: "projects", label: "Projets", icon: Briefcase },
@@ -336,6 +387,7 @@ const TABS: { key: TabKey; label: string; icon: any }[] = [
 export default function ClientDetailsPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const id = params.id as string;
 
   const [client, setClient] = useState<Client | null>(null);
@@ -426,7 +478,7 @@ export default function ClientDetailsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId: id,
-          senderEmail: "contact@agencyflow.com",
+          senderEmail: session?.user?.email || "contact@agencyflow.com",
           receiverEmail: emailForm.to.trim(),
           subject: emailForm.subject.trim(),
           message: emailForm.message.trim(),
@@ -495,7 +547,7 @@ export default function ClientDetailsPage() {
       await fetch(`/api/clients/${id}/activities`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: id, userId: "current-user", action, description }),
+        body: JSON.stringify({ action, description }),
       });
       const res = await fetch(`/api/clients/${id}/activities`);
       const data = await res.json();
@@ -564,7 +616,7 @@ export default function ClientDetailsPage() {
       const method = editReminderId ? "PUT" : "POST";
       const body = editReminderId
         ? { ...reminderForm, reminderDate, endDate, _id: editReminderId }
-        : { ...reminderForm, reminderDate, endDate };
+        : { ...reminderForm, reminderDate, endDate, createdBy: session?.user?.email || "current-user" };
       const res = await fetch(`/api/clients/${id}/reminders`, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -652,7 +704,7 @@ export default function ClientDetailsPage() {
       const res = await fetch(`/api/clients/${id}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: id, userId: "current-user", comment: commentText.trim() }),
+        body: JSON.stringify({ comment: commentText.trim() }),
       });
       if (res.ok) {
         setCommentText("");
@@ -700,6 +752,7 @@ export default function ClientDetailsPage() {
 
   async function handleDeleteDoc(docId: string) {
     if (!confirm("Supprimer ce document ?")) return;
+    const doc = documents.find(d => d._id === docId);
     setDeletingDocId(docId);
     try {
       await fetch(`/api/clients/${id}/documents`, {
@@ -710,6 +763,20 @@ export default function ClientDetailsPage() {
       const res = await fetch(`/api/clients/${id}/documents`);
       const data = await res.json();
       setDocuments(Array.isArray(data) ? data : []);
+      if (doc) {
+        const userName = session?.user?.name || "Utilisateur inconnu";
+        const userEmail = session?.user?.email || "—";
+        const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+        await addToCorbeille({
+          id: "corbeille-fichier-" + Date.now(),
+          type: "Fichier",
+          nom: doc.documentName,
+          supprimePar: { nom: userName, email: userEmail, fonction: "Utilisateur", avatar: userAvatar },
+          supprimeLe: new Date().toISOString(),
+          supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          sourceData: doc,
+        });
+      }
       await createActivity("DELETE_DOCUMENT", "Document supprimé");
     } catch (err) {
       console.error("Delete doc error", err);
@@ -907,7 +974,22 @@ export default function ClientDetailsPage() {
 
   async function handleDelete() {
     if (!confirm("Supprimer ce client ?")) return;
+    const clientData = client;
     await fetch(`/api/clients/${id}`, { method: "DELETE" });
+    if (clientData) {
+      const userName = session?.user?.name || "Utilisateur inconnu";
+      const userEmail = session?.user?.email || "—";
+      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+      await addToCorbeille({
+        id: "corbeille-client-" + Date.now(),
+        type: "Client",
+        nom: clientData.nomSociete,
+        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
+        supprimeLe: new Date().toISOString(),
+        supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        sourceData: clientData,
+      });
+    }
     router.push("/dashboard/clients");
   }
 
@@ -1206,6 +1288,10 @@ export default function ClientDetailsPage() {
                                     {React.createElement(icon, { size: 14 })}
                                   </div>
                                   <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-xs font-medium text-indigo-600">{act.userName || "Utilisateur"}</span>
+                                      {act.userEmail && <span className="text-xs text-slate-400">{act.userEmail}</span>}
+                                    </div>
                                     <p className="text-sm text-slate-700">{act.description}</p>
                                     <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                                       <Clock size={11} /> {formatTimeAgo(act.createdAt)}
@@ -1294,7 +1380,7 @@ export default function ClientDetailsPage() {
                 {/* Comment input */}
                 <div className="flex gap-3 mb-4">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">
-                    "MO"
+                    {(session?.user?.name || "?").slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 flex gap-2">
                     <input
@@ -1323,11 +1409,12 @@ export default function ClientDetailsPage() {
                     {comments.slice(0, 3).map((c) => (
                       <div key={c._id} className="flex gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">
-                          {c.userId.slice(0, 2).toUpperCase()}
+                          {c.userName ? c.userName.slice(0, 2).toUpperCase() : c.userId.slice(0, 2).toUpperCase()}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-slate-800">Utilisateur</span>
+                            <span className="text-sm font-medium text-slate-800">{c.userName || "Utilisateur"}</span>
+                            {c.userEmail && <span className="text-xs text-slate-400">{c.userEmail}</span>}
                             <span className="text-xs text-slate-400">{formatDateTimeReal(c.createdAt)}</span>
                           </div>
                           <p className="mt-1 text-sm text-slate-600">{c.comment}</p>
@@ -1367,7 +1454,9 @@ export default function ClientDetailsPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {documents.slice(0, 8).map((d) => (
+                    {documents.slice(0, 8).map((d) => {
+                      const docOvName = d.uploadedByName || (() => { const sesUser = getSessionUser(session); const u = getUserInfo(d.uploadedBy, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return `${u.prenom} ${u.nom}`; })();
+                      return (
                       <div key={d._id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 hover:bg-slate-50 transition">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500">
                           <FileText size={18} />
@@ -1375,6 +1464,7 @@ export default function ClientDetailsPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-slate-800 truncate">{d.documentName}</p>
                           <p className="text-xs text-slate-400">{formatFileSize(d.fileSize)} • {formatDate(d.createdAt)}</p>
+                          <p className="text-xs text-indigo-500 mt-0.5">{docOvName}</p>
                         </div>
                         <a
                           href={d.fileUrl}
@@ -1384,12 +1474,13 @@ export default function ClientDetailsPage() {
                         >
                           <Download size={15} />
                         </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        </div>
+                      );
+                    })}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
               {/* Right column */}
             <div className="space-y-6">
@@ -1589,7 +1680,10 @@ export default function ClientDetailsPage() {
             </div>
           ) : (
             <div className="relative space-y-0">
-              {activities.map((act, i) => (
+              {activities.map((act, i) => {
+                const displayName = act.userName || (() => { const sesUser = getSessionUser(session); const user = getUserInfo(act.userId, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return `${user.prenom} ${user.nom}`; })();
+                const displayEmail = act.userEmail || (() => { const sesUser = getSessionUser(session); const user = getUserInfo(act.userId, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return user.email; })();
+                return (
                 <div key={act._id} className="relative flex gap-4 pb-6">
                   {i < activities.length - 1 && <div className="absolute left-[15px] top-8 bottom-0 w-0.5 bg-slate-200" />}
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 z-10">
@@ -1598,12 +1692,18 @@ export default function ClientDetailsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800">{act.action}</p>
                     <p className="text-sm text-slate-500 mt-0.5">{act.description}</p>
-                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                      <Clock size={11} /> {formatDateTime(act.createdAt)}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs font-medium text-indigo-600">{displayName}</span>
+                      <span className="text-xs text-slate-400">{displayEmail}</span>
+                      <span className="text-xs text-slate-300">•</span>
+                      <span className="text-xs text-slate-400 flex items-center gap-1">
+                        <Clock size={11} /> {formatDateTime(act.createdAt)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1628,7 +1728,10 @@ export default function ClientDetailsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {documents.map((d) => (
+              {documents.map((d) => {
+                const docUploaderName = d.uploadedByName || (() => { const sesUser = getSessionUser(session); const u = getUserInfo(d.uploadedBy, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return `${u.prenom} ${u.nom}`; })();
+                const docUploaderEmail = d.uploadedByEmail || (() => { const sesUser = getSessionUser(session); const u = getUserInfo(d.uploadedBy, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return u.email; })();
+                return (
                 <div key={d._id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-4 hover:bg-slate-50 transition group">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
                     <FileText size={22} />
@@ -1650,7 +1753,12 @@ export default function ClientDetailsPage() {
                       <>
                         <p className="text-sm font-medium text-slate-800 truncate">{d.documentName}</p>
                         <p className="text-xs text-slate-400">{d.documentType} • {formatFileSize(d.fileSize)}</p>
-                        <p className="text-xs text-slate-400">{formatDate(d.createdAt)}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-indigo-600 font-medium">{docUploaderName}</span>
+                          <span className="text-xs text-slate-400">{docUploaderEmail}</span>
+                          <span className="text-xs text-slate-300">•</span>
+                          <span className="text-xs text-slate-400">{formatDate(d.createdAt)}</span>
+                        </div>
                       </>
                     )}
                   </div>
@@ -1680,7 +1788,8 @@ export default function ClientDetailsPage() {
                     </a>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
@@ -1694,7 +1803,7 @@ export default function ClientDetailsPage() {
           {/* Comment input */}
           <div className="flex gap-3 mb-6 pb-6 border-b border-slate-100">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">
-              MO
+              {(() => { const name = session?.user?.name || "?"; return name.slice(0, 2).toUpperCase(); })()}
             </div>
             <div className="flex-1 flex gap-2">
               <input
@@ -1721,15 +1830,21 @@ export default function ClientDetailsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {comments.map((c) => (
+              {comments.map((c) => {
+                const displayName = c.userName || (() => { const sesUser = getSessionUser(session); const user = getUserInfo(c.userId, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return `${user.prenom} ${user.nom}`; })();
+                const displayEmail = c.userEmail || (() => { const sesUser = getSessionUser(session); const user = getUserInfo(c.userId, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return user.email; })();
+                const initials = c.userName ? c.userName.slice(0, 2).toUpperCase() : (() => { const sesUser = getSessionUser(session); const user = getUserInfo(c.userId, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return ((user.prenom?.[0] || "") + (user.nom?.[0] || "")).toUpperCase() || "?"; })();
+                return (
                 <div key={c._id} className="flex gap-3 p-4 rounded-xl bg-slate-50 group">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">
-                    {c.userId.slice(0, 2).toUpperCase()}
+                    {initials}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-800">Utilisateur</span>
+                        <span className="text-sm font-medium text-slate-800">{displayName}</span>
+                        <span className="text-xs text-slate-400">{displayEmail}</span>
+                        <span className="text-xs text-slate-300">•</span>
                         <span className="text-xs text-slate-400">{formatDateTimeReal(c.createdAt)}</span>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
@@ -1767,7 +1882,8 @@ export default function ClientDetailsPage() {
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
@@ -1793,7 +1909,12 @@ export default function ClientDetailsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {[...emails].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((e) => (
+              {[...emails].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((e) => {
+                const senderName = e.sentByName || (() => { const sesUser = getSessionUser(session); const s = getUserInfo(e.sentBy || e.senderEmail, sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return `${s.prenom} ${s.nom}`; })();
+                const senderEmail = e.sentByEmail || e.senderEmail;
+                const sesUser = getSessionUser(session);
+                const receiver = getUserInfo(e.receiverEmail);
+                return (
                 <div key={e._id} className="rounded-xl border border-slate-100 p-4 hover:bg-slate-50 hover:shadow-sm transition">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -1803,7 +1924,7 @@ export default function ClientDetailsPage() {
                       <div>
                         <p className="text-sm font-semibold text-slate-800">{e.subject}</p>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {e.senderEmail} → {e.receiverEmail}
+                          <span className="font-medium text-indigo-600">{senderName}</span> ({senderEmail}) → <span className="font-medium text-indigo-600">{receiver.prenom} {receiver.nom}</span> ({e.receiverEmail})
                         </p>
                       </div>
                     </div>
@@ -1825,7 +1946,8 @@ export default function ClientDetailsPage() {
                     </a>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
@@ -1884,6 +2006,7 @@ export default function ClientDetailsPage() {
               formatDate={formatDate}
               priorityBadges={priorityBadges}
               statusBadges={statusBadges}
+              session={session}
             />
           ) : (
             /* List View */
@@ -1934,6 +2057,8 @@ export default function ClientDetailsPage() {
                             }`}>
                               {isOverdue ? "En retard" : r.status}
                             </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-indigo-600 font-medium">{r.createdByName || (() => { const sesUser = getSessionUser(session); const u = getUserInfo(r.createdBy || "current-user", sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return `${u.prenom} ${u.nom} (${u.email})`; })()}</span>
                           </div>
                         </div>
                       </div>
@@ -2316,13 +2441,14 @@ export default function ClientDetailsPage() {
   );
 }
 
-function CalendarView({ reminders, onComplete, onEdit, formatDate, priorityBadges, statusBadges }: {
+function CalendarView({ reminders, onComplete, onEdit, formatDate, priorityBadges, statusBadges, session }: {
   reminders: any[];
   onComplete: (id: string) => void;
   onEdit: (r: any) => void;
   formatDate: (d: string) => string;
   priorityBadges: Record<string, string>;
   statusBadges: Record<string, string>;
+  session: any;
 }) {
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
@@ -2385,13 +2511,14 @@ function CalendarView({ reminders, onComplete, onEdit, formatDate, priorityBadge
                     title={r.title}
                   >
                     {r.title}
-                    <div className="absolute left-0 top-full z-10 mt-1 hidden w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-lg group-hover:block">
+                    <div className="absolute left-0 top-full z-10 mt-1 hidden w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-lg group-hover:block">
                       <p className="text-xs font-semibold text-slate-800">{r.title}</p>
                       {r.description && <p className="text-xs text-slate-500 mt-0.5">{r.description}</p>}
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`rounded px-1 py-0.5 text-[10px] font-medium ${priorityBadges[r.priority] || ""}`}>{r.priority}</span>
                         <span className={`rounded px-1 py-0.5 text-[10px] font-medium ${statusBadges[r.status] || ""}`}>{r.status}</span>
                       </div>
+                      <p className="text-[10px] text-indigo-600 mt-1 font-medium">{r.createdByName ? `${r.createdByName}${r.createdByEmail ? ` (${r.createdByEmail})` : ""}` : (() => { const sesUser = getSessionUser(session); const u = getUserInfo(r.createdBy || "current-user", sesUser ? { prenom: sesUser.prenom, nom: sesUser.nom, email: sesUser.email } : undefined); return `${u.prenom} ${u.nom} (${u.email})`; })()}</p>
                     </div>
                   </div>
                 ))}

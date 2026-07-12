@@ -58,6 +58,8 @@ function formatNumber(v: number) {
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     fetch("/api/stats")
@@ -232,7 +234,7 @@ export default function DashboardPage() {
               <p className="text-[11px] text-slate-400">{stats.totalProjects} projet{stats.totalProjects > 1 ? "s" : ""}</p>
             </div>
           </div>
-          {projectsChartData.length > 0 ? (
+          {projectsChartData.length > 0 && mounted ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={projectsChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" isAnimationActive={false}>
@@ -260,7 +262,7 @@ export default function DashboardPage() {
               <p className="text-[11px] text-slate-400">{stats.totalTasks} tâche{stats.totalTasks > 1 ? "s" : ""}</p>
             </div>
           </div>
-          {tasksChartData.length > 0 ? (
+          {tasksChartData.length > 0 && mounted ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={tasksChartData} barSize={28}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -290,7 +292,7 @@ export default function DashboardPage() {
               <p className="text-[11px] text-slate-400">{clientsChartData.length} client{clientsChartData.length > 1 ? "s" : ""}</p>
             </div>
           </div>
-          {clientsChartData.length > 0 ? (
+          {clientsChartData.length > 0 && mounted ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={clientsChartData} layout="vertical" barSize={16}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />

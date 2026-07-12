@@ -6,9 +6,6 @@ import { MockClientReminder } from "@/lib/mock-db";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const reminders = await MockClientReminder.find({ clientId: id });
     return NextResponse.json(reminders);
@@ -21,12 +18,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const body = await request.json();
-    const reminder = await MockClientReminder.create({ clientId: id, ...body });
+    const reminder = await MockClientReminder.create({
+      clientId: id,
+      ...body,
+      createdBy: session?.user?.id || "",
+      createdByName: session?.user?.name || "",
+      createdByEmail: session?.user?.email || "",
+    });
     return NextResponse.json(reminder, { status: 201 });
   } catch (error) {
     console.error("Error creating client reminder:", error);
@@ -36,10 +36,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const body = await request.json();
     if (!body._id) {
@@ -55,10 +51,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const body = await request.json();
     if (!body._id) {

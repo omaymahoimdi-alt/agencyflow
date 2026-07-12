@@ -7,10 +7,6 @@ import path from "path";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const documents = await MockClientDocument.find({ clientId: id });
     return NextResponse.json(documents);
@@ -23,9 +19,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
 
     const formData = await request.formData();
@@ -50,7 +43,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       documentType: file.type || "application/octet-stream",
       fileUrl,
       fileSize: file.size,
-      uploadedBy: session.user.id,
+      uploadedBy: session?.user?.id || "",
+      uploadedByName: session?.user?.name || "",
+      uploadedByEmail: session?.user?.email || "",
     });
 
     return NextResponse.json(document, { status: 201 });
@@ -62,10 +57,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const body = await request.json();
     if (!body._id) {
@@ -81,10 +72,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const body = await request.json();
     if (!body._id) {

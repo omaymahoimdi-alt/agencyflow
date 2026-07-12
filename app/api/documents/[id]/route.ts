@@ -17,7 +17,7 @@ cloudinary.config({
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const { id } = await params;

@@ -6,9 +6,6 @@ import { MockClientInvoice } from "@/lib/mock-db";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
     const { id } = await params;
     const invoices = await MockClientInvoice.find({ clientId: id });
     return NextResponse.json(invoices);

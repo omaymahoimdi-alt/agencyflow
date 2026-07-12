@@ -8,12 +8,12 @@ import { MockSettings } from "@/lib/mock-db";
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     try {
       await connectDB();
-      let settings = await Settings.findOne({ userId: session.user.id });
+      let settings = await Settings.findOne({ workspaceId: session.user.workspaceId });
       if (!settings) {
         settings = await Settings.create({
           nomAgence: "AgencyFlow",
@@ -22,12 +22,12 @@ export async function GET() {
           logo: "",
           theme: "light",
           couleur: "#7C3AED",
-          userId: session.user.id,
+          workspaceId: session.user.workspaceId,
         });
       }
       return NextResponse.json(settings);
     } catch (dbError) {
-      let settings = await MockSettings.findOne({ userId: session.user.id });
+      let settings = await MockSettings.findOne({ workspaceId: session.user.workspaceId });
       if (!settings) {
         settings = await MockSettings.create({
           nomAgence: "AgencyFlow",
@@ -40,7 +40,7 @@ export async function GET() {
           notifRappels: true,
           notifEcheances: false,
           notifCommentaires: true,
-          userId: session.user.id,
+          workspaceId: session.user.workspaceId,
         });
       }
       return NextResponse.json(settings);
@@ -54,25 +54,25 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const body = await request.json();
     try {
       await connectDB();
-      let settings = await Settings.findOne({ userId: session.user.id });
+      let settings = await Settings.findOne({ workspaceId: session.user.workspaceId });
       if (!settings) {
-        settings = await Settings.create({ ...body, userId: session.user.id });
+        settings = await Settings.create({ ...body, workspaceId: session.user.workspaceId });
       } else {
-        settings = await Settings.findOneAndUpdate({ userId: session.user.id }, body, { new: true });
+        settings = await Settings.findOneAndUpdate({ workspaceId: session.user.workspaceId }, body, { new: true });
       }
       return NextResponse.json(settings);
     } catch (dbError) {
-      let settings = await MockSettings.findOne({ userId: session.user.id });
+      let settings = await MockSettings.findOne({ workspaceId: session.user.workspaceId });
       if (!settings) {
-        settings = await MockSettings.create({ ...body, userId: session.user.id });
+        settings = await MockSettings.create({ ...body, workspaceId: session.user.workspaceId });
       } else {
-        settings = await MockSettings.findOneAndUpdate({ userId: session.user.id }, body);
+        settings = await MockSettings.findOneAndUpdate({ workspaceId: session.user.workspaceId }, body);
       }
       return NextResponse.json(settings);
     }

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   Plus, Pencil, Trash2, X, FolderKanban, Search,
   ArrowUpDown, AlertCircle, Star, StarOff, LayoutList, Columns3,
   CalendarDays, ChevronLeft, ChevronRight,
-  MoreHorizontal, Eye, Archive, Clock, TrendingUp,
+  Eye, Archive, Clock, TrendingUp,
   Briefcase, CheckCircle2, PauseCircle, AlertTriangle,
   BarChart3, DollarSign, User, Calendar,
 } from "lucide-react";
@@ -86,6 +87,8 @@ const PIE_COLORS = ["#f59e0b", "#6366f1", "#8b5cf6", "#10b981", "#ef4444"];
 
 export default function ProjectsPage() {
   const router = useRouter();
+  // Récupération de la session NextAuth pour identifier l'utilisateur connecté
+  const { data: session } = useSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [filtered, setFiltered] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -105,7 +108,6 @@ export default function ProjectsPage() {
   const [error, setError] = useState("");
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const pageSize = 8;
 
   useEffect(() => {
@@ -222,11 +224,16 @@ export default function ProjectsPage() {
     await fetch(`/api/projects/${id}`, { method: "DELETE" });
     refreshProjects();
     if (project) {
-      addToCorbeille({
+      // Identification automatique du responsable via la session de l'utilisateur connecté.
+      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
+      const userName = session?.user?.name || "Utilisateur inconnu";
+      const userEmail = session?.user?.email || "—";
+      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+      await addToCorbeille({
         id: "corbeille-projet-" + Date.now(),
         type: "Projet",
         nom: project.titre,
-        supprimePar: { nom: "Moi", fonction: "Utilisateur", avatar: "M" },
+        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
         supprimeLe: new Date().toISOString(),
         supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         sourceData: project,
@@ -548,37 +555,37 @@ export default function ProjectsPage() {
                       </td>
 
                       {/* ACTIONS */}
-                      <td className="px-4 py-4 text-right relative">
-                        <button
-                          onClick={() => setOpenMenu(openMenu === p._id ? null : p._id)}
-                          className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700"
-                        >
-                          <MoreHorizontal size={16} />
-                        </button>
-                        {openMenu === p._id && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />
-                            <div className="absolute right-4 top-12 z-20 w-48 rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl animate-in fade-in slide-in-from-top-1">
-                              <button
-                                onClick={() => { setOpenMenu(null); router.push(`/dashboard/projects/${p._id}`); }}
-                                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 transition-colors hover:bg-violet-50 hover:text-violet-700"
-                              ><Eye size={15} /> Voir détails</button>
-                              <button
-                                onClick={() => { setOpenMenu(null); openEdit(p); }}
-                                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 transition-colors hover:bg-violet-50 hover:text-violet-700"
-                              ><Pencil size={15} /> Modifier</button>
-                              <button
-                                onClick={() => setOpenMenu(null)}
-                                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 transition-colors hover:bg-violet-50 hover:text-violet-700"
-                              ><Archive size={15} /> Archiver</button>
-                              <hr className="my-1 border-slate-100" />
-                              <button
-                                onClick={() => { setOpenMenu(null); handleDelete(p._id); }}
-                                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
-                              ><Trash2 size={15} /> Supprimer</button>
-                            </div>
-                          </>
-                        )}
+                      <td className="px-4 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => router.push(`/dashboard/projects/${p._id}`)}
+                            className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-violet-50 hover:text-violet-600"
+                            title="Voir détails"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            onClick={() => openEdit(p)}
+                            className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-violet-50 hover:text-violet-600"
+                            title="Modifier"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            onClick={() => {}}
+                            className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-violet-50 hover:text-violet-600"
+                            title="Archiver"
+                          >
+                            <Archive size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(p._id)}
+                            className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

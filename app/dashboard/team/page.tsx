@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
-  Plus, Pencil, Trash2, X, Users, Search, Filter, ArrowUpDown, AlertCircle,
+  Plus, Pencil, Trash2, X, User, Users, Search, Filter, ArrowUpDown, AlertCircle,
   Upload, Download, UserPlus, Mail, Bell, UserCheck, Clock, Briefcase,
   Shield, UserCog, BarChart3, FolderKanban, LayoutList, LayoutGrid,
   ChevronDown, ChevronRight, MoreHorizontal, Eye, Star, Calendar,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import Recaptcha from "@/components/Recaptcha";
+import { useSession } from "next-auth/react";
 import { addToCorbeille } from "@/lib/corbeille";
 
 // --- Types ---
@@ -30,6 +31,8 @@ interface TeamMember {
   dateEmbauche: string;
   derniereActivite: string;
   favori?: boolean;
+  addedBy?: string;
+  addedByEmail?: string;
 }
 
 interface Invitation {
@@ -40,6 +43,7 @@ interface Invitation {
   role: string;
   equipe: string;
   invitePar: string;
+  inviteParEmail?: string;
   dateEnvoi: string;
   statut: "En attente" | "Acceptée" | "Expirée" | "Annulée";
   expiration: string;
@@ -54,29 +58,6 @@ interface ActivityItem {
 }
 
 // --- Mock Data ---
-const MOCK_MEMBERS: TeamMember[] = [
-  { _id: "m1", nom: "Doe", prenom: "John", email: "john.doe@example.com", role: "Développeur", equipe: "Développement", telephone: "+212 6 12 34 56 78", photo: "", statut: "Actif", projets: 5, dateEmbauche: "2024-01-15", derniereActivite: "2026-06-28T10:45:00" },
-  { _id: "m2", nom: "Hoimdi", prenom: "Omayma", email: "omayma.hoimdi@esprit.tn", role: "Chef de projet", equipe: "Gestion de projet", telephone: "+212 6 98 76 54 32", photo: "", statut: "Actif", projets: 8, dateEmbauche: "2023-09-01", derniereActivite: "2026-06-28T09:30:00" },
-  { _id: "m3", nom: "Smith", prenom: "Jane", email: "jane.smith@example.com", role: "Designer", equipe: "Design", telephone: "+212 6 45 67 89 01", photo: "", statut: "Actif", projets: 4, dateEmbauche: "2024-03-10", derniereActivite: "2026-06-27T16:20:00" },
-  { _id: "m4", nom: "Salah", prenom: "Mohamed", email: "m.salah@esprit.tn", role: "Développeur", equipe: "Développement", telephone: "+212 6 23 45 67 89", photo: "", statut: "Actif", projets: 6, dateEmbauche: "2024-06-01", derniereActivite: "2026-06-28T08:15:00" },
-  { _id: "m5", nom: "Aouadi", prenom: "Karim", email: "karim.aouadi@esprit.tn", role: "Testeur", equipe: "Qualité", telephone: "+212 6 56 78 90 12", photo: "", statut: "En pause", projets: 3, dateEmbauche: "2024-02-20", derniereActivite: "2026-06-25T14:00:00" },
-  { _id: "m6", nom: "Benali", prenom: "Sara", email: "sara.benali@esprit.tn", role: "Designer", equipe: "Design", telephone: "+212 6 34 56 78 90", photo: "", statut: "Actif", projets: 4, dateEmbauche: "2024-04-15", derniereActivite: "2026-06-28T11:00:00" },
-  { _id: "m7", nom: "El Amrani", prenom: "Youssef", email: "youssef.amrani@esprit.tn", role: "Administrateur", equipe: "Administration", telephone: "+212 6 67 89 01 23", photo: "", statut: "Actif", projets: 2, dateEmbauche: "2023-01-10", derniereActivite: "2026-06-28T07:45:00" },
-  { _id: "m8", nom: "Idrissi", prenom: "Fatima", email: "fatima.idrissi@esprit.tn", role: "Client", equipe: "", telephone: "+212 6 78 90 12 34", photo: "", statut: "Invité", projets: 0, dateEmbauche: "2026-06-20", derniereActivite: "2026-06-26T09:00:00" },
-  { _id: "m9", nom: "Tazi", prenom: "Hassan", email: "hassan.tazi@esprit.tn", role: "Développeur", equipe: "Développement", telephone: "+212 6 89 01 23 45", photo: "", statut: "Actif", projets: 5, dateEmbauche: "2024-07-01", derniereActivite: "2026-06-27T15:30:00" },
-  { _id: "m10", nom: "Mouline", prenom: "Nadia", email: "nadia.mouline@esprit.tn", role: "Chef de projet", equipe: "Gestion de projet", telephone: "+212 6 90 12 34 56", photo: "", statut: "En pause", projets: 6, dateEmbauche: "2024-05-10", derniereActivite: "2026-06-24T10:00:00" },
-  { _id: "m11", nom: "Rami", prenom: "Omar", email: "omar.rami@esprit.tn", role: "Testeur", equipe: "Qualité", telephone: "+212 6 12 34 56 78", photo: "", statut: "Actif", projets: 2, dateEmbauche: "2025-01-15", derniereActivite: "2026-06-28T10:00:00" },
-  { _id: "m12", nom: "Khalid", prenom: "Leila", email: "leila.khalid@esprit.tn", role: "Designer", equipe: "Design", telephone: "+212 6 34 56 78 90", photo: "", statut: "Invité", projets: 1, dateEmbauche: "2026-06-22", derniereActivite: "2026-06-27T11:00:00" },
-];
-
-const MOCK_INVITATIONS: Invitation[] = [
-  { _id: "i1", nom: "Ben Ali", prenom: "Sara", email: "sara.benali@example.com", role: "Développeur", equipe: "Développement", invitePar: "Omayma Hoimdi", dateEnvoi: "2026-06-26T10:00:00", statut: "En attente", expiration: "2026-07-03T10:00:00" },
-  { _id: "i2", nom: "Ben Nasr", prenom: "Ahmed", email: "ahmed.nasr@example.com", role: "Designer", equipe: "Design", invitePar: "John Doe", dateEnvoi: "2026-06-25T14:30:00", statut: "En attente", expiration: "2026-07-02T14:30:00" },
-  { _id: "i3", nom: "Aouadi", prenom: "Karim", email: "karim.aouadi@example.com", role: "Testeur", equipe: "Qualité", invitePar: "Omayma Hoimdi", dateEnvoi: "2026-06-22T09:15:00", statut: "Acceptée", expiration: "2026-06-29T09:15:00" },
-  { _id: "i4", nom: "Mansouri", prenom: "Leila", email: "leila.mansouri@example.com", role: "Chef de projet", equipe: "Gestion de projet", invitePar: "Youssef El Amrani", dateEnvoi: "2026-06-24T11:00:00", statut: "En attente", expiration: "2026-07-01T11:00:00" },
-  { _id: "i5", nom: "Cherkaoui", prenom: "Rachid", email: "rachid.cherkaoui@example.com", role: "Développeur", equipe: "Développement", invitePar: "John Doe", dateEnvoi: "2026-06-20T08:00:00", statut: "Expirée", expiration: "2026-06-27T08:00:00" },
-  { _id: "i6", nom: "Bennani", prenom: "Nadia", email: "nadia.bennani@example.com", role: "Designer", equipe: "Design", invitePar: "Omayma Hoimdi", dateEnvoi: "2026-06-23T16:45:00", statut: "Acceptée", expiration: "2026-06-30T16:45:00" },
-];
 
 // --- Équipes ---
 interface EquipeItem {
@@ -90,6 +71,20 @@ interface EquipeItem {
   statut: "Actif" | "En pause";
   dateCreation: string;
   couleur: string;
+  creePar?: string;
+  creeParEmail?: string;
+}
+
+interface ActivityEntry {
+  id: string;
+  type: string;
+  message: string;
+  userNom: string;
+  userEmail: string;
+  userRole: string;
+  project: string;
+  priority: "haute" | "moyenne" | "basse";
+  date: string;
 }
 
 const MOCK_EQUIPES: EquipeItem[] = [
@@ -101,73 +96,6 @@ const MOCK_EQUIPES: EquipeItem[] = [
   { id: "e6", nom: "Administration", description: "Gestion administrative, RH et finances.", responsable: { prenom: "Youssef", nom: "El Amrani", fonction: "Admin Système" }, membres: [ { prenom: "Fatima", nom: "Idrissi", email: "fatima.idrissi@esprit.tn" } ], projetsCount: 2, chargeTravail: 55, statut: "Actif", dateCreation: "2023-01-10", couleur: "sky" },
 ];
 
-const TEAM_ACTIVITIES = [
-  { id: "ta1", user: "John Doe", action: "a rejoint l'équipe Développement", time: "Il y a 2h", initials: "JD" },
-  { id: "ta2", user: "Omayma Hoimdi", action: "a créé l'équipe Gestion de projet", time: "Il y a 1j", initials: "OH" },
-  { id: "ta3", user: "Système", action: "Projet 'Site E-commerce' assigné à Développement", time: "Il y a 2j", initials: "SY" },
-  { id: "ta4", user: "Jane Smith", action: "a modifié les informations de l'équipe Design", time: "Il y a 3j", initials: "JS" },
-  { id: "ta5", user: "Karim Aouadi", action: "a rejoint l'équipe Qualité", time: "Il y a 4j", initials: "KA" },
-];
-
-// --- Rapports data ---
-const RAPPORT_PERFORMANCE = [
-  { month: "Janvier", productivite: 72, taches: 38 },
-  { month: "Février", productivite: 78, taches: 42 },
-  { month: "Mars", productivite: 83, taches: 47 },
-  { month: "Avril", productivite: 79, taches: 45 },
-  { month: "Mai", productivite: 87, taches: 52 },
-  { month: "Juin", productivite: 91, taches: 58 },
-];
-
-const RAPPORT_TEAM_PROD = [
-  { name: "Développement", value: 92, couleur: "#7C3AED" },
-  { name: "Design", value: 85, couleur: "#6366F1" },
-  { name: "Gestion de projet", value: 80, couleur: "#10B981" },
-  { name: "Qualité", value: 75, couleur: "#F59E0B" },
-  { name: "Marketing", value: 70, couleur: "#F472B6" },
-  { name: "Administration", value: 60, couleur: "#94A3B8" },
-];
-
-const RAPPORT_TASKS_STATUS = [
-  { name: "Terminées", value: 142, couleur: "#10B981", pct: 56 },
-  { name: "En cours", value: 62, couleur: "#7C3AED", pct: 25 },
-  { name: "En attente", value: 31, couleur: "#F59E0B", pct: 12 },
-  { name: "Bloquées", value: 18, couleur: "#EF4444", pct: 7 },
-];
-
-const RAPPORT_HOURS = [
-  { week: "Semaine 1", heures: 32 },
-  { week: "Semaine 2", heures: 28 },
-  { week: "Semaine 3", heures: 35 },
-  { week: "Semaine 4", heures: 30 },
-  { week: "Semaine 5", heures: 26 },
-];
-
-const RAPPORT_PROJECTS = [
-  { projet: "Refonte site web", equipe: "Développement", progression: 75, tachesTerminees: 42, dateLimite: "15 Juil 2026" },
-  { projet: "Mobile App UI", equipe: "Design", progression: 60, tachesTerminees: 18, dateLimite: "30 Juil 2026" },
-  { projet: "CRM Integration", equipe: "Développement", progression: 35, tachesTerminees: 12, dateLimite: "20 Août 2026" },
-  { projet: "Audit qualité", equipe: "Qualité", progression: 90, tachesTerminees: 28, dateLimite: "5 Juil 2026" },
-  { projet: "Campagne marketing", equipe: "Marketing", progression: 50, tachesTerminees: 15, dateLimite: "10 Août 2026" },
-];
-
-const RAPPORT_ACTIVITIES = [
-  { id: "ra1", user: "Ahmed Ben Ali", action: "a terminé 5 tâches", time: "Il y a 2h", initials: "AB", icon: "CheckCircle", color: "text-emerald-500 bg-emerald-50" },
-  { id: "ra2", user: "Lina Ben Amor", action: "a créé le projet \"Mobile App UI\"", time: "Il y a 4h", initials: "LB", icon: "FolderKanban", color: "text-violet-500 bg-violet-50" },
-  { id: "ra3", user: "Mohamed Salah", action: "a ajouté un membre à l'équipe Développement", time: "Il y a 6h", initials: "MS", icon: "UserPlus", color: "text-indigo-500 bg-indigo-50" },
-  { id: "ra4", user: "Omayma Hoimdi", action: "a modifié les rôles et permissions", time: "Il y a 1j", initials: "OH", icon: "Shield", color: "text-amber-500 bg-amber-50" },
-  { id: "ra5", user: "Jane Smith", action: "a rejoint l'équipe Design", time: "Il y a 2j", initials: "JS", icon: "UserCheck", color: "text-emerald-500 bg-emerald-50" },
-  { id: "ra6", user: "Karim Aouadi", action: "a complété l'audit qualité", time: "Il y a 3j", initials: "KA", icon: "CheckCircle", color: "text-emerald-500 bg-emerald-50" },
-];
-
-const RAPPORT_KPI = [
-  { label: "Membres actifs", value: "24", evolution: "+12%", up: true, icon: "Users", color: "text-violet-600", bg: "bg-violet-50" },
-  { label: "Productivité moyenne", value: "87%", evolution: "+8%", up: true, icon: "BarChart3", color: "text-emerald-600", bg: "bg-emerald-50" },
-  { label: "Projets en cours", value: "18", evolution: "+5", up: true, icon: "FolderKanban", color: "text-indigo-600", bg: "bg-indigo-50" },
-  { label: "Tâches terminées", value: "253", evolution: "+18%", up: true, icon: "CheckCircle", color: "text-amber-600", bg: "bg-amber-50" },
-  { label: "Heures travaillées", value: "124h", evolution: "-4%", up: false, icon: "Clock", color: "text-rose-600", bg: "bg-rose-50" },
-];
-
 const EQUIPE_COLORS: Record<string, string> = {
   emerald: "bg-emerald-100 text-emerald-600",
   violet: "bg-violet-100 text-violet-600",
@@ -176,17 +104,6 @@ const EQUIPE_COLORS: Record<string, string> = {
   rose: "bg-rose-100 text-rose-600",
   sky: "bg-sky-100 text-sky-600",
 };
-
-const ACTIVITIES: ActivityItem[] = [
-  { id: "a1", type: "new_member", user: "Fatima Idrissi", action: "a rejoint l'équipe Design", time: "Il y a 2h" },
-  { id: "a2", type: "new_member", user: "Leila Khalid", action: "a rejoint l'équipe Design", time: "Il y a 5h" },
-  { id: "a3", type: "active", user: "John Doe", action: "a complété 3 tâches", time: "Il y a 3h" },
-  { id: "a4", type: "active", user: "Omayma Hoimdi", action: "a créé une nouvelle tâche", time: "Il y a 4h" },
-  { id: "a5", type: "invitation", user: "Système", action: "Invitation envoyée à Ahmed B.", time: "Il y a 1j" },
-  { id: "a6", type: "invitation", user: "Système", action: "Invitation envoyée à Marie C.", time: "Il y a 2j" },
-  { id: "a7", type: "role_created", user: "Admin", action: "Rôle 'Designer' modifié", time: "Il y a 3j" },
-  { id: "a8", type: "new_member", user: "Omar Rami", action: "a rejoint l'équipe Qualité", time: "Il y a 4j" },
-];
 
 const ROLES = ["Administrateur", "Chef de projet", "Développeur", "Designer", "Testeur", "Client"];
 const EQUIPES = ["Développement", "Design", "Gestion de projet", "Qualité", "Marketing", "Administration"];
@@ -217,7 +134,7 @@ const STATUT_DOTS: Record<string, string> = {
 
 const DONUT_COLORS = ["#10b981", "#8b5cf6", "#6366f1", "#f59e0b", "#94a3b8"];
 
-const TABS = ["Membres", "Invitations", "Rôles & Permissions", "Équipes", "Rapports"];
+const TABS = ["Membres", "Invitations", "Rôles & Permissions", "Équipes", "Rapports", "Activité"];
 
 // --- Roles & Permissions ---
 interface RoleItem {
@@ -227,6 +144,7 @@ interface RoleItem {
   type: "Système" | "Personnalisé";
   dateCreation: string;
   creePar: string;
+  creeParEmail?: string;
   membreCount: number;
   projetsCount: number;
   derniereModification: string;
@@ -311,185 +229,9 @@ const PERMISSION_CATEGORIES: PermCategory[] = [
   },
 ];
 
-const MOCK_ROLES: RoleItem[] = [
-  { id: "r1", nom: "Administrateur", description: "Accès complet à toutes les fonctionnalités de la plateforme.", type: "Système", dateCreation: "2023-01-10", creePar: "Système", membreCount: 2, projetsCount: 12, derniereModification: "2026-06-28T10:00:00", membres: [{ prenom: "Omayma", nom: "Hoimdi", email: "omayma.hoimdi@esprit.tn" }, { prenom: "Youssef", nom: "El Amrani", email: "youssef.amrani@esprit.tn" }] },
-  { id: "r2", nom: "Chef de projet", description: "Gère les projets, les tâches et les équipes.", type: "Système", dateCreation: "2023-01-10", creePar: "Système", membreCount: 2, projetsCount: 8, derniereModification: "2026-06-27T14:30:00", membres: [{ prenom: "Nadia", nom: "Mouline", email: "nadia.mouline@esprit.tn" }, { prenom: "Omayma", nom: "Hoimdi", email: "omayma.hoimdi@esprit.tn" }] },
-  { id: "r3", nom: "Développeur", description: "Accès aux tâches de développement et aux documents techniques.", type: "Système", dateCreation: "2023-01-10", creePar: "Système", membreCount: 3, projetsCount: 15, derniereModification: "2026-06-26T09:15:00", membres: [{ prenom: "John", nom: "Doe", email: "john.doe@example.com" }, { prenom: "Mohamed", nom: "Salah", email: "m.salah@esprit.tn" }, { prenom: "Hassan", nom: "Tazi", email: "hassan.tazi@esprit.tn" }] },
-  { id: "r4", nom: "Designer", description: "Accès aux maquettes, prototypes et documents de design.", type: "Système", dateCreation: "2023-01-10", creePar: "Système", membreCount: 3, projetsCount: 6, derniereModification: "2026-06-25T16:45:00", membres: [{ prenom: "Jane", nom: "Smith", email: "jane.smith@example.com" }, { prenom: "Sara", nom: "Benali", email: "sara.benali@esprit.tn" }, { prenom: "Leila", nom: "Khalid", email: "leila.khalid@esprit.tn" }] },
-  { id: "r5", nom: "Testeur", description: "Accès aux tâches de test et aux rapports de qualité.", type: "Système", dateCreation: "2023-01-10", creePar: "Système", membreCount: 2, projetsCount: 4, derniereModification: "2026-06-24T11:20:00", membres: [{ prenom: "Karim", nom: "Aouadi", email: "karim.aouadi@esprit.tn" }, { prenom: "Omar", nom: "Rami", email: "omar.rami@esprit.tn" }] },
-  { id: "r6", nom: "Client", description: "Accès limité à la consultation des projets et des livrables.", type: "Personnalisé", dateCreation: "2024-06-15", creePar: "Omayma Hoimdi", membreCount: 1, projetsCount: 2, derniereModification: "2026-06-20T08:00:00", membres: [{ prenom: "Fatima", nom: "Idrissi", email: "fatima.idrissi@esprit.tn" }] },
-];
 
-const INITIAL_PERMISSIONS: PermissionMatrix = {
-  r1: {
-    projets_voir: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    projets_creer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    projets_modifier: { voir: true, creer: true, modifier: true, supprimer: true, gerer: false },
-    projets_supprimer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: false },
-    projets_gerer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    taches_voir: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    taches_creer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    taches_modifier: { voir: true, creer: true, modifier: true, supprimer: true, gerer: false },
-    taches_supprimer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: false },
-    taches_assigner: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    clients_voir: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    clients_creer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    clients_modifier: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    clients_supprimer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    docs_voir: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    docs_ajouter: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    docs_telecharger: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    docs_supprimer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    factures_voir: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    factures_creer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    factures_paiements: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    messages_envoyer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    messages_supprimer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    equipe_voir: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    equipe_gerer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    equipe_roles: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-  },
-  r2: {
-    projets_voir: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    projets_creer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    projets_modifier: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    projets_supprimer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    projets_gerer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    taches_voir: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    taches_creer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    taches_modifier: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    taches_supprimer: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    taches_assigner: { voir: true, creer: true, modifier: true, supprimer: true, gerer: true },
-    clients_voir: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    clients_creer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    clients_modifier: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    clients_supprimer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: true },
-    docs_voir: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_ajouter: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_telecharger: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_supprimer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    factures_voir: { voir: true, creer: false, modifier: true, supprimer: false, gerer: true },
-    factures_creer: { voir: true, creer: false, modifier: true, supprimer: false, gerer: true },
-    factures_paiements: { voir: true, creer: false, modifier: true, supprimer: false, gerer: true },
-    messages_envoyer: { voir: true, creer: true, modifier: false, supprimer: false, gerer: false },
-    messages_supprimer: { voir: true, creer: true, modifier: false, supprimer: false, gerer: false },
-    equipe_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: true },
-    equipe_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: true },
-    equipe_roles: { voir: true, creer: false, modifier: false, supprimer: false, gerer: true },
-  },
-  r3: {
-    projets_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_creer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_modifier: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_voir: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    taches_creer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    taches_modifier: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    taches_supprimer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    taches_assigner: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    clients_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_modifier: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_supprimer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_voir: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_ajouter: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_telecharger: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_supprimer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    factures_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_paiements: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    messages_envoyer: { voir: true, creer: true, modifier: false, supprimer: false, gerer: false },
-    messages_supprimer: { voir: true, creer: true, modifier: false, supprimer: false, gerer: false },
-    equipe_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_roles: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-  },
-  r4: {
-    projets_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_creer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_modifier: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_voir: { voir: true, creer: false, modifier: true, supprimer: false, gerer: false },
-    taches_creer: { voir: true, creer: false, modifier: true, supprimer: false, gerer: false },
-    taches_modifier: { voir: true, creer: false, modifier: true, supprimer: false, gerer: false },
-    taches_supprimer: { voir: true, creer: false, modifier: true, supprimer: false, gerer: false },
-    taches_assigner: { voir: true, creer: false, modifier: true, supprimer: false, gerer: false },
-    clients_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_creer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_modifier: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_voir: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_ajouter: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_telecharger: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    docs_supprimer: { voir: true, creer: true, modifier: true, supprimer: false, gerer: false },
-    factures_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_paiements: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    messages_envoyer: { voir: true, creer: true, modifier: false, supprimer: false, gerer: false },
-    messages_supprimer: { voir: true, creer: true, modifier: false, supprimer: false, gerer: false },
-    equipe_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_roles: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-  },
-  r5: {
-    projets_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_creer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_modifier: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_creer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_modifier: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_assigner: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_modifier: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_supprimer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_ajouter: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_telecharger: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_paiements: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    messages_envoyer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    messages_supprimer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_roles: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-  },
-  r6: {
-    projets_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_creer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_modifier: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    projets_gerer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_modifier: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_supprimer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    taches_assigner: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_modifier: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    clients_supprimer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_voir: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_ajouter: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_telecharger: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    docs_supprimer: { voir: true, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_creer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    factures_paiements: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    messages_envoyer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    messages_supprimer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_voir: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_gerer: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-    equipe_roles: { voir: false, creer: false, modifier: false, supprimer: false, gerer: false },
-  },
-};
+
+
 
 const ROLE_ICONS: Record<string, string> = {
   Administrateur: "text-purple-600",
@@ -521,25 +263,67 @@ function formatActivity(dateStr: string) {
 
 function getInitials(p: string, n: string) { return ((p?.[0] ?? "") + (n?.[0] ?? "")).toUpperCase() || "?"; }
 
+function formatDiscussionShortDate(dateStr: string) {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  if (diff < 86400000) return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "Il y a " + sec + " s";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return "Il y a " + min + " min";
+  const h = Math.floor(min / 60);
+  if (h < 24) return "Il y a " + h + " h";
+  const d = Math.floor(h / 24);
+  if (d === 1) return "Hier";
+  if (d < 7) return "Il y a " + d + " jours";
+  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(new Date(dateStr));
+}
+
 export default function TeamPage() {
+  const { data: session } = useSession();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
   // Tab state
   const [activeTab, setActiveTab] = useState("Rôles & Permissions");
 
-  // Members state with localStorage persistence
-  const [members, setMembers] = useState<TeamMember[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("af_team_members");
-      if (saved) try { return JSON.parse(saved); } catch {}
-    }
-    return MOCK_MEMBERS;
-  });
+  // Members state
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem("af_team_members", JSON.stringify(members));
-  }, [members]);
+    setMembersLoading(true);
+    fetch("/api/team")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (Array.isArray(data)) {
+          const mapped: TeamMember[] = data.map((t: any) => ({
+            _id: t._id,
+            nom: t.nom || "",
+            prenom: t.prenom || "",
+            email: t.email || "",
+            role: t.role || "",
+            equipe: t.equipe || "",
+            telephone: t.telephone || "",
+            photo: t.photo || t.avatar || "",
+            statut: t.statut || "Actif",
+            projets: t.projets || 0,
+            dateEmbauche: t.dateEmbauche || t.createdAt || "",
+            derniereActivite: t.derniereActivite || t.updatedAt || t.createdAt || "",
+            favori: t.favori || false,
+          }));
+          setMembers(mapped);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setMembersLoading(false));
+  }, []);
 
   // Filter states
   const [search, setSearch] = useState("");
@@ -557,6 +341,7 @@ export default function TeamPage() {
     prenom: "", nom: "", email: "", role: "Développeur", equipe: "Développement", telephone: "", statut: "Actif", dateEmbauche: "", derniereActivite: new Date().toISOString(),
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   const validateMember = (data: typeof memberForm): Record<string, string> => {
     const errors: Record<string, string> = {};
@@ -590,7 +375,126 @@ export default function TeamPage() {
   } | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  const activities = ACTIVITIES;
+  // Real data for Rapports
+  const [reportTasks, setReportTasks] = useState<any[]>([]);
+  const [reportProjects, setReportProjects] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/tasks").then(r => r.json()).then(d => setReportTasks(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch("/api/projects").then(r => r.json()).then(d => setReportProjects(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
+
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  useEffect(() => {
+    fetch("/api/activities?limit=10")
+      .then(r => r.json())
+      .then(data => {
+        if (data?.activities) {
+          setActivities(data.activities.map((a: any) => ({
+            id: a._id,
+            type: a.action === "created" ? "new_member" : a.action === "invited" ? "invitation" : "active",
+            user: a.userName || "Système",
+            action: a.description || a.action,
+            time: a.createdAt || "",
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const taskTerminee = (t: any) => t.statut === "Terminée" || t.statut === "Terminé" || t.statut === "Terminee";
+  const taskBloquee = (t: any) => t.statut === "Bloquée" || t.statut === "Bloqué" || t.statut === "Bloquee";
+  const taskEnCours = (t: any) => t.statut === "En cours";
+  const taskAFaire = (t: any) => t.statut === "À faire" || t.statut === "A faire";
+  const projetTermine = (p: any) => p.statut === "Terminé" || p.statut === "Terminée" || p.statut === "Termine" || p.statut === "Terminee";
+  const projetAnnule = (p: any) => p.statut === "Annulé" || p.statut === "Annule";
+
+  const rapportKpi = useMemo(() => {
+    const actif = members.filter(m => m.statut === "Actif").length;
+    const totalTaches = reportTasks.length;
+    const terminees = reportTasks.filter(taskTerminee).length;
+    const projetsActifs = reportProjects.filter(p => !projetTermine(p) && !projetAnnule(p)).length;
+    return [
+      { label: "Membres actifs", value: String(actif), evolution: `${members.length} total`, up: true, icon: "Users", color: "text-violet-600", bg: "bg-violet-50" },
+      { label: "Tâches terminées", value: String(terminees), evolution: `${totalTaches} total`, up: true, icon: "CheckCircle", color: "text-emerald-600", bg: "bg-emerald-50" },
+      { label: "Projets en cours", value: String(projetsActifs), evolution: `${reportProjects.length} total`, up: true, icon: "FolderKanban", color: "text-indigo-600", bg: "bg-indigo-50" },
+      { label: "Taux d'achèvement", value: totalTaches > 0 ? `${Math.round(terminees / totalTaches * 100)}%` : "0%", evolution: "des tâches", up: true, icon: "CheckCircle", color: "text-emerald-600", bg: "bg-emerald-50" },
+    ];
+  }, [members, reportTasks, reportProjects]);
+
+  const rapportTasksByStatus = useMemo(() => {
+    const total = reportTasks.length || 1;
+    const done = reportTasks.filter(taskTerminee).length;
+    const inProgress = reportTasks.filter(taskEnCours).length;
+    const aFaire = reportTasks.filter(taskAFaire).length;
+    const blocked = reportTasks.filter(taskBloquee).length;
+    return [
+      { name: "Terminées", value: done, couleur: "#10B981", pct: Math.round(done / total * 100) },
+      { name: "En cours", value: inProgress, couleur: "#7C3AED", pct: Math.round(inProgress / total * 100) },
+      { name: "À faire", value: aFaire, couleur: "#F59E0B", pct: Math.round(aFaire / total * 100) },
+      { name: "Bloquées", value: blocked, couleur: "#EF4444", pct: Math.round(blocked / total * 100) },
+    ];
+  }, [reportTasks]);
+
+  const rapportTeamProd = useMemo(() => {
+    const teams = [...new Set(members.map(m => m.equipe).filter(Boolean))];
+    const colors = ["#7C3AED", "#6366F1", "#10B981", "#F59E0B", "#F472B6", "#94A3B8"];
+    return teams.map((name, i) => {
+      const teamMembers = members.filter(m => m.equipe === name);
+      const tasksForTeam = reportTasks.filter((t: any) => {
+        const eid = t.employeId?._id || t.employeId;
+        return eid && teamMembers.some(m => m._id === eid);
+      });
+      const done = tasksForTeam.filter(taskTerminee).length;
+      const total = tasksForTeam.length || 1;
+      return { name, value: Math.round(done / total * 100), couleur: colors[i % colors.length] };
+    });
+  }, [members, reportTasks]);
+
+  const rapportPerformance = useMemo(() => {
+    const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin"];
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    return months.slice(0, currentMonth + 1).map((month, idx) => {
+      const monthTasks = reportTasks.filter((t: any) => {
+        const d = new Date(t.createdAt || t.dateDebut || t.dateFin);
+        return d.getMonth() === idx;
+      });
+      const done = monthTasks.filter(taskTerminee).length;
+      const total = monthTasks.length || 1;
+      return { month, productivite: Math.round(done / total * 100), taches: done };
+    });
+  }, [reportTasks]);
+
+  const rapportProjects = useMemo(() => {
+    return reportProjects.slice(0, 5).map((p: any) => {
+      const pTasks = reportTasks.filter((t: any) => {
+        const pid = t.projetId?._id || t.projetId;
+        return pid === p._id;
+      });
+      const done = pTasks.filter(taskTerminee).length;
+      const total = pTasks.length || 1;
+      return {
+        projet: p.titre || p.nom || "Projet",
+        equipe: p.equipe || "—",
+        progression: Math.round(done / total * 100),
+        tachesTerminees: done,
+        dateLimite: p.dateFin ? new Date(p.dateFin).toLocaleDateString("fr-FR") : "—",
+      };
+    });
+  }, [reportProjects, reportTasks]);
+
+  const rapportActivities = useMemo(() => {
+    return members.slice(0, 6).map((m, i) => ({
+      id: "ra" + i,
+      user: `${m.prenom} ${m.nom}`,
+      action: m.statut === "Actif" ? "est actif(ve) dans l'équipe" : "membre de l'équipe",
+      time: m.derniereActivite ? `Dernière activité ${new Date(m.derniereActivite).toLocaleDateString("fr-FR")}` : "Activité récente",
+      initials: (m.prenom[0] + m.nom[0]).toUpperCase(),
+      icon: "UserCheck" as const,
+      color: "text-emerald-500 bg-emerald-50",
+    }));
+  }, [members]);
 
   const filtered = useMemo(() => {
     let result = [...members];
@@ -654,38 +558,81 @@ export default function TeamPage() {
     setShowModal(true);
   }
 
-  function handleSave(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     const errors = validateMember(memberForm);
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    if (editing) {
-      setMembers(prev => prev.map(m => m._id === editing._id ? { ...m, ...memberForm, dateEmbauche: memberForm.dateEmbauche || m.dateEmbauche } : m));
-    } else {
-      const newMember: TeamMember = {
-        _id: "m" + Date.now(),
-        ...memberForm,
-        projets: 0,
-        photo: "",
-        dateEmbauche: memberForm.dateEmbauche || new Date().toISOString().split("T")[0],
-      };
-      setMembers(prev => [...prev, newMember]);
+    setSaving(true);
+    try {
+      if (editing) {
+        const res = await fetch(`/api/team/${editing._id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(memberForm),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setMembers(prev => prev.map(m => m._id === editing._id ? { ...m, ...updated, photo: updated.photo || updated.avatar || "" } : m));
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setFormErrors(errData.errors || { general: errData.message || "Erreur lors de la modification" });
+          return;
+        }
+      } else {
+        const res = await fetch("/api/team", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(memberForm),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          const mapped: TeamMember = {
+            _id: created._id,
+            nom: created.nom || "",
+            prenom: created.prenom || "",
+            email: created.email || "",
+            role: created.role || "",
+            equipe: created.equipe || "",
+            telephone: created.telephone || "",
+            photo: created.photo || created.avatar || "",
+            statut: created.statut || "Actif",
+            projets: created.projets || 0,
+            dateEmbauche: created.dateEmbauche || "",
+            derniereActivite: created.derniereActivite || created.updatedAt || created.createdAt || "",
+            favori: false,
+          };
+          setMembers(prev => [...prev, mapped]);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setFormErrors(errData.errors || { general: errData.message || "Erreur lors de l'ajout" });
+          return;
+        }
+      }
+      setShowModal(false);
+      setFormErrors({});
+    } catch {
+      setFormErrors({ general: "Erreur réseau" });
+    } finally {
+      setSaving(false);
     }
-    setShowModal(false);
-    setFormErrors({});
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm("Supprimer ce membre ?")) return;
     const member = members.find(m => m._id === id);
+    await fetch(`/api/team/${id}`, { method: "DELETE" });
     setMembers(prev => prev.filter(m => m._id !== id));
     setMemberMenu(null);
     if (member) {
-      addToCorbeille({
+      const userName = session?.user?.name || "Utilisateur inconnu";
+      const userEmail = session?.user?.email || "—";
+      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+      await addToCorbeille({
         id: "corbeille-membre-" + Date.now(),
         type: "Membre",
         nom: member.prenom + " " + member.nom,
-        supprimePar: { nom: "Moi", fonction: "Utilisateur", avatar: "M" },
+        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
         supprimeLe: new Date().toISOString(),
         supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         sourceData: member,
@@ -700,13 +647,13 @@ export default function TeamPage() {
 
   // --- AI Report Generator ---
   function buildReportData() {
-    const productivite = 87;
-    const tachesTerminees = 253;
-    const totalTaches = 253 + 62 + 31 + 18;
-    const tachesRetard = 18;
-    const topMember = "Mohamed Salah";
-    const overloaded = ["Ahmed Ben Ali"];
-    const riskyProjects = ["CRM Integration", "Mobile App"];
+    const totalTaches = reportTasks.length;
+    const tachesTerminees = reportTasks.filter(taskTerminee).length;
+    const tachesRetard = reportTasks.filter(taskBloquee).length;
+    const productivite = totalTaches > 0 ? Math.round(tachesTerminees / totalTaches * 100) : 0;
+    const topMember = members.length > 0 ? members[0].prenom + " " + members[0].nom : "—";
+    const overloaded: string[] = [];
+    const riskyProjects: string[] = reportProjects.filter(p => !projetTermine(p) && !projetAnnule(p)).slice(0, 2).map((p: any) => p.titre || p.nom || "Projet");
     const membersCount = members.length;
     const actifCount = members.filter(m => m.statut === "Actif").length;
     return { productivite, tachesTerminees, totalTaches, tachesRetard, topMember, overloaded, riskyProjects, membersCount, actifCount };
@@ -715,32 +662,33 @@ export default function TeamPage() {
   function generateMockReport() {
     const d = buildReportData();
     const productiviteLabel = d.productivite >= 85 ? "excellente" : d.productivite >= 70 ? "bonne" : "modérée";
+    const pct = d.totalTaches > 0 ? Math.round(d.tachesTerminees / d.totalTaches * 100) : 0;
     const summary = `**Rapport Équipe — ${new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}**\n\n` +
       `L'équipe compte **${d.actifCount} membres actifs** sur ${d.membersCount} au total. ` +
       `La productivité globale est de **${d.productivite}%** (${productiviteLabel}), avec **${d.tachesTerminees} tâches terminées** sur ${d.totalTaches} ` +
-      `(${Math.round(d.tachesTerminees / d.totalTaches * 100)}% d'avancement). ` +
+      `(${pct}% d'avancement). ` +
       `${d.tachesRetard} tâches sont en retard.`;
 
     const strengths = [
       `Productivité ${productiviteLabel} de ${d.productivite}% — au-dessus de la moyenne du secteur`,
-      `${d.tachesTerminees} tâches accomplies ce mois-ci, soit ${Math.round(d.tachesTerminees / d.totalTaches * 100)}% du total`,
+      `${d.tachesTerminees} tâches accomplies ce mois-ci, soit ${pct}% du total`,
       `**${d.topMember}** est le membre le plus performant avec un taux d'achèvement de 96%`,
       `Forte collaboration inter-équipes et respect des délais sur les projets prioritaires`,
     ];
 
     const risks = [
-      `⚠ **${d.riskyProjects.join("** et **")}** — progression inférieure à 50% avec échéance dans moins de 2 semaines`,
+      d.riskyProjects.length > 0 ? `⚠ **${d.riskyProjects.join("** et **")}** — progression inférieure à 50% avec échéance dans moins de 2 semaines` : null,
       d.overloaded.length > 0 ? `⚠ **${d.overloaded.join("** et **")}** — ${d.overloaded.length === 1 ? "a" : "ont"} plus de 10 tâches actives, risque d'épuisement` : null,
       `⚠ **${d.tachesRetard} tâches en retard** — impact potentiel sur le budget et la satisfaction client`,
     ].filter(Boolean) as string[];
 
     const recommendations = [
-      `**Rééquilibrer la charge** : redistribuer les tâches de ${d.overloaded.join(" et ")} vers les membres disponibles`,
-      `**Planifier un sprint dédié** au projet ${d.riskyProjects[0]} pour rattraper le retard accumulé`,
-      `**Ajouter un membre** dans l'équipe ${d.riskyProjects[1]} pour accélérer la livraison`,
+      d.overloaded.length > 0 ? `**Rééquilibrer la charge** : redistribuer les tâches de ${d.overloaded.join(" et ")} vers les membres disponibles` : null,
+      d.riskyProjects.length > 0 ? `**Planifier un sprint dédié** au projet ${d.riskyProjects[0]} pour rattraper le retard accumulé` : null,
+      d.riskyProjects.length > 1 ? `**Ajouter un membre** dans l'équipe ${d.riskyProjects[1]} pour accélérer la livraison` : null,
       `**Organiser une réunion hebdomadaire** de suivi des risques pour anticiper les dérives`,
-      `**Féliciter et motiver** : mettre en avant ${d.topMember} comme exemple de performance`,
-    ];
+      d.topMember !== "—" ? `**Féliciter et motiver** : mettre en avant ${d.topMember} comme exemple de performance` : null,
+    ].filter(Boolean) as string[];
 
     return {
       summary, strengths, risks, recommendations,
@@ -862,7 +810,8 @@ Format de réponse attendu (JSON valide uniquement) :
           _id: "i" + Date.now(),
           prenom: invForm.prenom, nom: invForm.nom, email: invForm.email,
           role: invForm.role, equipe: invForm.equipe,
-          invitePar: "Omayma Hoimdi",
+          invitePar: session?.user?.name || "Omayma Hoimdi",
+          inviteParEmail: session?.user?.email || "",
           dateEnvoi: now.toISOString(),
           statut: "En attente",
           expiration: exp.toISOString(),
@@ -880,43 +829,126 @@ Format de réponse attendu (JSON valide uniquement) :
     }
   }
 
-  function handleDeleteInvitation(id: string) {
+  async function handleDeleteInvitation(id: string) {
     if (!confirm("Supprimer cette invitation ?")) return;
-    setInvitations(prev => prev.filter(i => i._id !== id));
-    setInvMenu(null);
-  }
-
-  function handleResendInvitation(id: string) {
-    setInvitations(prev => prev.map(i =>
-      i._id === id ? {
-        ...i,
-        statut: "En attente" as const,
-        dateEnvoi: new Date().toISOString(),
-        expiration: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      } : i
-    ));
-    setInvMenu(null);
-  }
-
-  function handleCancelInvitation(id: string) {
-    setInvitations(prev => prev.map(i =>
-      i._id === id ? { ...i, statut: "Annulée" as const } : i
-    ));
-    setInvMenu(null);
-  }
-
-  // Invitations state with localStorage
-  const [invitations, setInvitations] = useState<Invitation[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("af_team_invitations");
-      if (saved) try { return JSON.parse(saved); } catch {}
+    try {
+      const res = await fetch(`/api/invitations/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Erreur lors de la suppression");
+      }
+      setInvitations(prev => prev.filter(i => i._id !== id));
+    } catch (err: any) {
+      console.error("Delete invitation error:", err);
+      setInviteError(err.message || "Erreur lors de la suppression");
     }
-    return MOCK_INVITATIONS;
-  });
+    setInvMenu(null);
+  }
+
+  async function handleResendInvitation(id: string) {
+    const inv = invitations.find(i => i._id === id);
+    if (!inv) return;
+    setInviteError("");
+    setSendingInvite(true);
+    try {
+      const res = await fetch("/api/invitations/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prenom: inv.prenom, nom: inv.nom, email: inv.email, role: inv.role, equipe: inv.equipe }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Erreur d'envoi");
+      }
+      const now = new Date();
+      setInvitations(prev => prev.map(i =>
+        i._id === id ? {
+          ...i,
+          statut: "En attente" as const,
+          dateEnvoi: now.toISOString(),
+          expiration: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        } : i
+      ));
+    } catch (err: any) {
+      setInviteError(err.message || "Erreur lors du renvoi de l'invitation");
+    } finally {
+      setSendingInvite(false);
+      setInvMenu(null);
+    }
+  }
+
+  async function handleCancelInvitation(id: string) {
+    try {
+      const res = await fetch(`/api/invitations/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statut: "Annulée" }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Erreur lors de l'annulation");
+      }
+      setInvitations(prev => prev.map(i =>
+        i._id === id ? { ...i, statut: "Annulée" as const } : i
+      ));
+    } catch (err: any) {
+      console.error("Cancel invitation error:", err);
+      setInviteError(err.message || "Erreur lors de l'annulation");
+    }
+    setInvMenu(null);
+  }
+
+  function handleAcceptInvitation(inv: Invitation) {
+    const newMember: TeamMember = {
+      _id: "m" + Date.now(),
+      nom: inv.nom,
+      prenom: inv.prenom,
+      email: inv.email,
+      role: inv.role,
+      equipe: inv.equipe,
+      telephone: "",
+      photo: "",
+      statut: "Actif",
+      projets: 0,
+      dateEmbauche: new Date().toISOString().split("T")[0],
+      derniereActivite: new Date().toISOString(),
+      favori: false,
+    };
+    setMembers(prev => [...prev, newMember]);
+    setInvitations(prev => prev.map(i =>
+      i._id === inv._id ? { ...i, statut: "Acceptée" as const } : i
+    ));
+    setInvMenu(null);
+  }
+
+  // Invitations state
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem("af_team_invitations", JSON.stringify(invitations));
-  }, [invitations]);
+    setInvitationsLoading(true);
+    fetch("/api/invitations")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (Array.isArray(data)) {
+          setInvitations(data.map((inv: any) => ({
+            _id: inv._id,
+            nom: inv.nom || "",
+            prenom: inv.prenom || "",
+            email: inv.email || "",
+            role: inv.role || "",
+            equipe: inv.equipe || "",
+            invitePar: inv.invitePar || "",
+            inviteParEmail: inv.inviteParEmail || "",
+            dateEnvoi: inv.dateEnvoi || inv.createdAt || "",
+            statut: inv.statut || "En attente",
+            expiration: inv.expiration || "",
+          })));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setInvitationsLoading(false));
+  }, []);
 
   // Invitation filter states
   const [invSearch, setInvSearch] = useState("");
@@ -977,36 +1009,58 @@ Format de réponse attendu (JSON valide uniquement) :
   };
 
   // Roles & Permissions state
-  const [roles, setRoles] = useState<RoleItem[]>(() => {
-    try { const d = localStorage.getItem("af_roles"); return d ? JSON.parse(d) : MOCK_ROLES; } catch { return MOCK_ROLES; }
-  });
-  const [selectedRoleId, setSelectedRoleId] = useState("r1");
-  const [rolePermissions, setRolePermissions] = useState<PermissionMatrix>(() => {
-    try { const d = localStorage.getItem("af_permissions"); return d ? JSON.parse(d) : INITIAL_PERMISSIONS; } catch { return INITIAL_PERMISSIONS; }
-  });
+  const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [selectedRoleId, setSelectedRoleId] = useState("");
+  const [rolePermissions, setRolePermissions] = useState<PermissionMatrix>({});
   const [roleSearch, setRoleSearch] = useState("");
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [roleMenu, setRoleMenu] = useState<string | null>(null);
+  const [actMenu, setActMenu] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<RoleItem | null>(null);
   const [roleForm, setRoleForm] = useState({ nom: "", description: "", type: "Personnalisé" as RoleItem["type"] });
   const [saveConfirm, setSaveConfirm] = useState(false);
 
   useEffect(() => {
-    try { localStorage.setItem("af_roles", JSON.stringify(roles)); } catch {}
-  }, [roles]);
-  useEffect(() => {
-    try { localStorage.setItem("af_permissions", JSON.stringify(rolePermissions)); } catch {}
-  }, [rolePermissions]);
+    setRolesLoading(true);
+    fetch("/api/roles")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        const mapped: RoleItem[] = data.map((r: any) => ({
+          id: r._id,
+          nom: r.nom || "",
+          description: r.description || "",
+          type: r.type || "Personnalisé",
+          dateCreation: r.createdAt || new Date().toISOString(),
+          creePar: r.creePar || "",
+          creeParEmail: r.creeParEmail || "",
+          membreCount: r.membreCount || 0,
+          projetsCount: r.projetsCount || 0,
+          derniereModification: r.updatedAt || r.createdAt || new Date().toISOString(),
+          membres: r.membres || [],
+        }));
+        setRoles(mapped);
+        const perms: PermissionMatrix = {};
+        data.forEach((r: any) => {
+          if (r.permissions) {
+            perms[r._id] = {};
+            Object.entries(r.permissions).forEach(([key, val]) => {
+              perms[r._id][key] = val as { voir: boolean; creer: boolean; modifier: boolean; supprimer: boolean; gerer: boolean };
+            });
+          }
+        });
+        setRolePermissions(perms);
+        if (mapped.length > 0) setSelectedRoleId(mapped[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setRolesLoading(false));
+  }, []);
 
-  // Équipes state with localStorage
-  const [equipes, setEquipes] = useState<EquipeItem[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("af_equipes");
-      if (saved) try { return JSON.parse(saved); } catch {}
-    }
-    return MOCK_EQUIPES;
-  });
-  const [selectedEquipeId, setSelectedEquipeId] = useState("e1");
+  // Équipes state with API + localStorage
+  const [equipes, setEquipes] = useState<EquipeItem[]>([]);
+  const equipesLoaded = useRef(false);
+  const [selectedEquipeId, setSelectedEquipeId] = useState("");
   const [eqSearch, setEqSearch] = useState("");
   const [eqFilterStatut, setEqFilterStatut] = useState("");
   const [eqSort, setEqSort] = useState<"nom" | "charge" | "projets">("nom");
@@ -1067,6 +1121,8 @@ Format de réponse attendu (JSON valide uniquement) :
         membres: selectedMembers,
         projetsCount, chargeTravail, statut: statut as "Actif" | "En pause",
         dateCreation: new Date().toISOString().split("T")[0], couleur,
+        creePar: session?.user?.name || "Omayma Hoimdi",
+        creeParEmail: session?.user?.email || "",
       };
       setEquipes(prev => [...prev, newEquipe]);
       setSelectedEquipeId(newId);
@@ -1095,8 +1151,61 @@ Format de réponse attendu (JSON valide uniquement) :
   }
 
   useEffect(() => {
+    // Try API first, fallback to localStorage
+    fetch("/api/equipes").then(r => r.json()).then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setEquipes(data);
+        try { localStorage.setItem("af_equipes", JSON.stringify(data)); } catch {}
+      } else {
+        const saved = localStorage.getItem("af_equipes");
+        if (saved) try { setEquipes(JSON.parse(saved)); } catch {}
+      }
+    }).catch(() => {
+      const saved = localStorage.getItem("af_equipes");
+      if (saved) try { setEquipes(JSON.parse(saved)); } catch {}
+    }).finally(() => {
+      equipesLoaded.current = true;
+    });
+  }, []);
+
+  const eqSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    if (!equipesLoaded.current) return;
     try { localStorage.setItem("af_equipes", JSON.stringify(equipes)); } catch {}
+    clearTimeout(eqSaveTimer.current);
+    eqSaveTimer.current = setTimeout(() => {
+      fetch("/api/equipes", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(equipes) }).catch(() => {});
+    }, 2000);
   }, [equipes]);
+
+  // Activité state with localStorage
+  const [roleActivities, setRoleActivities] = useState<ActivityEntry[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("af_role_activities");
+      if (saved) try { return JSON.parse(saved); } catch {}
+    }
+    return [];
+  });
+  useEffect(() => {
+    try { localStorage.setItem("af_role_activities", JSON.stringify(roleActivities)); } catch {}
+  }, [roleActivities]);
+
+  function addActivity(type: string, message: string, project = "Général") {
+    const priorities = ["haute", "moyenne", "basse"] as const;
+    const priority = priorities[Math.floor(Math.random() * priorities.length)];
+    const entry: ActivityEntry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      type,
+      message,
+      userNom: session?.user?.name || "Omayma Hoimdi",
+      userEmail: session?.user?.email || "",
+      userRole: session?.user?.role || "Membre",
+      project,
+      priority,
+      date: new Date().toISOString(),
+    };
+    setRoleActivities(prev => [entry, ...prev]);
+  }
 
   const filteredEquipes = useMemo(() => {
     let result = [...equipes];
@@ -1177,13 +1286,24 @@ Format de réponse attendu (JSON valide uniquement) :
   }, [roles, rolePermissions]);
 
   function togglePerm(roleId: string, itemId: string, key: string) {
+    const role = roles.find(r => r.id === roleId);
+    const cat = PERMISSION_CATEGORIES.flatMap(c => c.items).find(i => i.id === itemId);
+    const actionLabel = key === "voir" ? "Voir" : key === "creer" ? "Créer" : key === "modifier" ? "Modifier" : key === "supprimer" ? "Supprimer" : "Gérer";
+    const newVal = !rolePermissions?.[roleId]?.[itemId]?.[key as keyof PermissionMatrix[string][string]];
+    const updatedPerms = {
+      ...rolePermissions[roleId],
+      [itemId]: { ...rolePermissions[roleId][itemId], [key]: newVal },
+    };
     setRolePermissions(prev => ({
       ...prev,
-      [roleId]: {
-        ...prev[roleId],
-        [itemId]: { ...prev[roleId][itemId], [key]: !prev[roleId][itemId][key as keyof typeof prev[typeof roleId][typeof itemId]] },
-      },
+      [roleId]: updatedPerms,
     }));
+    fetch(`/api/roles/${roleId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permissions: updatedPerms }),
+    }).catch(() => {});
+    if (role && cat) addActivity("perm_toggled", `a ${newVal ? "activé" : "désactivé"} la permission "${actionLabel}" pour "${cat.label}" dans le rôle "${role.nom}"`);
   }
 
   function openCreateRole() {
@@ -1207,37 +1327,65 @@ Format de réponse attendu (JSON valide uniquement) :
     return perms;
   }
 
-  function handleSaveRole(e: React.FormEvent) {
+  async function handleSaveRole(e: React.FormEvent) {
     e.preventDefault();
     if (!roleForm.nom.trim()) return;
     if (editingRole) {
-      setRoles(prev => prev.map(r =>
-        r.id === editingRole.id
-          ? { ...r, nom: roleForm.nom, description: roleForm.description, type: roleForm.type, derniereModification: new Date().toISOString() }
-          : r
-      ));
+      try {
+        const res = await fetch(`/api/roles/${editingRole.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nom: roleForm.nom, description: roleForm.description, type: roleForm.type }),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setRoles(prev => prev.map(r =>
+            r.id === editingRole.id
+              ? { ...r, nom: roleForm.nom, description: roleForm.description, type: roleForm.type, derniereModification: updated.updatedAt || new Date().toISOString() }
+              : r
+          ));
+          addActivity("role_edited", `a modifié le rôle "${roleForm.nom}"`);
+        }
+      } catch {}
     } else {
-      const nextId = "r" + (Math.max(...roles.map(r => parseInt(r.id.slice(1))), 0) + 1);
-      const newRole: RoleItem = {
-        id: nextId, nom: roleForm.nom, description: roleForm.description, type: roleForm.type,
-        dateCreation: new Date().toISOString(), creePar: "Omayma Hoimdi",
-        membreCount: 0, projetsCount: 0, derniereModification: new Date().toISOString(), membres: [],
-      };
-      setRoles(prev => [...prev, newRole]);
-      setRolePermissions(prev => ({ ...prev, [nextId]: buildDefaultPerms() }));
-      setSelectedRoleId(nextId);
+      try {
+        const res = await fetch("/api/roles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nom: roleForm.nom, description: roleForm.description, type: roleForm.type, permissions: buildDefaultPerms() }),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          const newRole: RoleItem = {
+            id: created.id || created._id,
+            nom: roleForm.nom, description: roleForm.description, type: roleForm.type,
+            dateCreation: new Date().toISOString(), creePar: session?.user?.name || "Omayma Hoimdi",
+            creeParEmail: session?.user?.email || "",
+            membreCount: 0, projetsCount: 0, derniereModification: new Date().toISOString(), membres: [],
+          };
+          setRoles(prev => [...prev, newRole]);
+          setRolePermissions(prev => ({ ...prev, [newRole.id]: buildDefaultPerms() }));
+          setSelectedRoleId(newRole.id);
+          addActivity("role_created", `a créé le rôle "${roleForm.nom}"`);
+        }
+      } catch {}
     }
     setShowRoleModal(false);
   }
 
-  function handleDeleteRole(id: string) {
+  async function handleDeleteRole(id: string) {
     if (!confirm("Supprimer ce rôle ?")) return;
+    const deleted = roles.find(r => r.id === id);
+    try {
+      await fetch(`/api/roles/${id}`, { method: "DELETE" });
+    } catch {}
     setRoles(prev => prev.filter(r => r.id !== id));
     setRolePermissions(prev => { const next = { ...prev }; delete next[id]; return next; });
     if (selectedRoleId === id) {
       setSelectedRoleId(roles.length > 1 ? roles.find(r => r.id !== id)!.id : "");
     }
     setRoleMenu(null);
+    if (deleted) addActivity("role_deleted", `a supprimé le rôle "${deleted.nom}"`);
   }
 
   function getDaysRemaining(expiration: string) {
@@ -1259,6 +1407,77 @@ Format de réponse attendu (JSON valide uniquement) :
     "Annulée": "bg-slate-400",
   };
 
+  // --- Activité : filtres, pagination, groupement (comme projet) ---
+  const [actFilterType, setActFilterType] = useState("");
+  const [actFilterMember, setActFilterMember] = useState("");
+  const [actSearch, setActSearch] = useState("");
+  const [actPage, setActPage] = useState(1);
+  const [actDateStart, setActDateStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split("T")[0]; });
+  const [actDateEnd, setActDateEnd] = useState(() => new Date().toISOString().split("T")[0]);
+  const pageSizeActivities = 10;
+
+  const actFiltered = useMemo(() => {
+    let result = [...roleActivities];
+    if (actFilterType) result = result.filter(a => a.type === actFilterType);
+    if (actFilterMember) result = result.filter(a => a.userNom === actFilterMember);
+    if (actSearch) {
+      const q = actSearch.toLowerCase();
+      result = result.filter(a => a.userNom.toLowerCase().includes(q) || a.message.toLowerCase().includes(q) || a.userEmail.toLowerCase().includes(q));
+    }
+    if (actDateStart) result = result.filter(a => new Date(a.date) >= new Date(actDateStart));
+    if (actDateEnd) {
+      const end = new Date(actDateEnd);
+      end.setHours(23, 59, 59, 999);
+      result = result.filter(a => new Date(a.date) <= end);
+    }
+    return result;
+  }, [roleActivities, actFilterType, actFilterMember, actSearch, actDateStart, actDateEnd]);
+
+  const actTotal = actFiltered.length;
+  const actHasMore = actPage * pageSizeActivities < actTotal;
+  const actDisplayed = actFiltered.slice(0, actPage * pageSizeActivities);
+
+  const actGrouped = useMemo(() => {
+    const groups: { label: string; date: string; items: ActivityEntry[] }[] = [];
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+    actDisplayed.forEach(item => {
+      const dateKey = new Date(item.date).toISOString().split("T")[0];
+      let label = new Date(item.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+      if (dateKey === today) label = "Aujourd'hui - " + label;
+      else if (dateKey === yesterday) label = "Hier - " + label;
+      const existing = groups.find(g => g.date === dateKey);
+      if (existing) existing.items.push(item);
+      else groups.push({ label, date: dateKey, items: [item] });
+    });
+    return groups;
+  }, [actDisplayed]);
+
+  const actSummary = useMemo(() => ({
+    roles: roleActivities.filter(a => ["role_created","role_edited","role_deleted"].includes(a.type)).length,
+    permissions: roleActivities.filter(a => a.type.startsWith("perm")).length,
+    total: roleActivities.length,
+  }), [roleActivities]);
+
+  const actByRole = useMemo(() => {
+    const counts: Record<string, number> = {};
+    roleActivities.forEach(a => { counts[a.userRole] = (counts[a.userRole] || 0) + 1; });
+    const total = Object.values(counts).reduce((s, v) => s + v, 0);
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, 4).map(([name, count]) => ({ name, value: Math.round((count / total) * 100), count }));
+    if (sorted.length > 4) {
+      const othersCount = sorted.slice(4).reduce((s, [, c]) => s + c, 0);
+      top.push({ name: "Autres", value: Math.round((othersCount / total) * 100), count: othersCount });
+    }
+    return top;
+  }, [roleActivities]);
+
+  const actFrequent = useMemo(() => {
+    const counts: Record<string, number> = {};
+    roleActivities.forEach(a => { counts[a.type] = (counts[a.type] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [roleActivities]);
+
   if (!mounted) return null;
 
   return (
@@ -1274,6 +1493,7 @@ Format de réponse attendu (JSON valide uniquement) :
             {activeTab === "Rôles & Permissions" && "Définissez les rôles, les permissions et les accès de chaque membre"}
             {activeTab === "Équipes" && "Organisez les membres en équipes par département ou projet"}
             {activeTab === "Rapports" && "Consultez les statistiques et les rapports de performance de l'équipe"}
+            {activeTab === "Activité" && "Suivez en temps réel toutes les modifications des rôles et permissions"}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -1374,7 +1594,7 @@ Format de réponse attendu (JSON valide uniquement) :
         </div>
       )}
       {activeTab === "Équipes" && (() => {
-        const allTeams = MOCK_EQUIPES;
+        const allTeams = equipes;
         const totalMembres = allTeams.reduce((s, t) => s + t.membres.length, 0);
         const totalProjets = allTeams.reduce((s, t) => s + t.projetsCount, 0);
         const avgProductivite = Math.round(allTeams.reduce((s, t) => s + t.chargeTravail, 0) / allTeams.length);
@@ -1400,7 +1620,7 @@ Format de réponse attendu (JSON valide uniquement) :
       })()}
       {activeTab === "Rapports" && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-          {RAPPORT_KPI.map(({ label, value, evolution, up, icon, color, bg }) => {
+          {rapportKpi.map(({ label, value, evolution, up, icon, color, bg }) => {
             const Icon = { Users, BarChart3, FolderKanban, CheckCircle, Clock }[icon as "Users" | "BarChart3" | "FolderKanban" | "CheckCircle" | "Clock"] || Users;
             return (
               <div key={label} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-slate-200">
@@ -1533,6 +1753,7 @@ Format de réponse attendu (JSON valide uniquement) :
                         <th className="px-5 py-3.5 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Équipe</th>
                         <th className="px-5 py-3.5 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Projets</th>
                         <th className="px-5 py-3.5 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Statut</th>
+                        <th className="px-5 py-3.5 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Ajouté par</th>
                         <th className="px-5 py-3.5 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Dernière activité</th>
                         <th className="px-5 py-3.5 text-right font-semibold text-slate-700 text-xs uppercase tracking-wider">Actions</th>
                       </tr>
@@ -1540,7 +1761,7 @@ Format de réponse attendu (JSON valide uniquement) :
                     <tbody className="divide-y divide-slate-100">
                       {filtered.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-5 py-12 text-center text-slate-400">
+                          <td colSpan={8} className="px-5 py-12 text-center text-slate-400">
                             <Users size={32} className="mx-auto mb-2 opacity-30" />
                             Aucun membre trouvé
                           </td>
@@ -1579,6 +1800,16 @@ Format de réponse attendu (JSON valide uniquement) :
                                 <span className={`h-1.5 w-1.5 rounded-full ${STATUT_DOTS[m.statut] || "bg-slate-400"}`} />
                                 {m.statut}
                               </span>
+                            </td>
+                            <td className="px-5 py-4">
+                              {m.addedBy ? (
+                                <div>
+                                  <p className="text-xs text-slate-600">{m.addedBy}</p>
+                                  {m.addedByEmail && <p className="text-[10px] text-slate-400">{m.addedByEmail}</p>}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
                             </td>
                             <td className="px-5 py-4 text-xs text-slate-500">{formatActivity(m.derniereActivite)}</td>
                             <td className="px-5 py-4 text-right relative">
@@ -1641,6 +1872,9 @@ Format de réponse attendu (JSON valide uniquement) :
                           <div className="flex items-center gap-2 mt-3 text-xs text-slate-500">
                             <Briefcase size={13} /> {m.projets} projets
                           </div>
+                          {m.addedBy && (
+                            <p className="text-[10px] text-slate-400 mt-1.5">Ajouté par {m.addedBy}{m.addedByEmail ? ` (${m.addedByEmail})` : ""}</p>
+                          )}
                           <div className="w-full mt-3 pt-3 border-t border-slate-50 flex justify-center gap-2">
                             <button className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-50 hover:text-violet-600 transition"><Eye size={14} /></button>
                             <button onClick={() => openEdit(m)} className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-50 hover:text-violet-600 transition"><Pencil size={14} /></button>
@@ -1669,90 +1903,163 @@ Format de réponse attendu (JSON valide uniquement) :
 
           {/* ===== RÔLES & PERMISSIONS TAB ===== */}
           {activeTab === "Rôles & Permissions" && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-              {/* Left: Role list */}
-              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
-                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-                  <h3 className="text-base font-bold text-slate-900">Liste des rôles</h3>
-                  <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-600">{roles.length}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
+
+              {/* ======================== LEFT : Liste des Rôles ======================== */}
+              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col" style={{ minHeight: 620 }}>
+                {/* En-tête */}
+                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100">
+                      <Shield size={16} className="text-violet-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Rôles</h3>
+                      <p className="text-[10px] text-slate-400">{roles.length} rôle{roles.length > 1 ? "s" : ""} configurés</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-violet-600 px-2.5 py-0.5 text-xs font-bold text-white">{roles.length}</span>
                 </div>
-                <div className="border-b border-slate-100 px-6 py-4">
+
+                {/* Barre de recherche */}
+                <div className="border-b border-slate-100 px-6 py-3">
                   <div className="relative">
-                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input value={roleSearch} onChange={(e) => setRoleSearch(e.target.value)} placeholder="Rechercher un rôle..."
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-100" />
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={roleSearch}
+                      onChange={(e) => setRoleSearch(e.target.value)}
+                      placeholder="Rechercher un rôle..."
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-sm outline-none focus:border-violet-400 focus:bg-white transition"
+                    />
                   </div>
                 </div>
-                <div className="max-h-[600px] overflow-y-auto">
-                  {filteredRoles.map((r, idx) => {
+
+                {/* Liste des rôles — scrollable */}
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                  {filteredRoles.map((r) => {
                     const isActive = r.id === selectedRoleId;
-                    const roleIcon = {
+                    const roleIcon = ({
                       Administrateur: Users,
                       "Chef de projet": Briefcase,
                       Développeur: FileText,
                       Designer: LayoutList,
                       Testeur: CheckCircle,
                       Client: UserCircle2,
-                    }[r.nom] || Shield;
+                    } as Record<string, React.ElementType>)[r.nom] || Shield;
+
                     return (
-                      <div key={r.id} className={`relative flex items-center ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/30"} ${idx < filteredRoles.length - 1 ? "border-b border-slate-100" : ""}`}>
-                        <button onClick={() => setSelectedRoleId(r.id)}
-                          className={`flex-1 text-left px-6 py-4 transition-all ${isActive ? "bg-violet-50 border-l-2 border-violet-600 shadow-sm shadow-violet-100/50" : "hover:bg-slate-50 border-l-2 border-transparent"}`}>
-                          <div className="flex items-center gap-3">
-                            <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${ROLE_BG[r.nom] || "bg-slate-50"} shrink-0`}>
-                              {React.createElement(roleIcon, { size: 20, className: ROLE_ICONS[r.nom] || "text-slate-500" })}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-bold text-slate-900">{r.nom}</p>
-                                {r.type === "Système" && (
-                                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-500 border border-slate-200">Système</span>
-                                )}
-                              </div>
-                              <p className="text-sm text-slate-400 truncate mt-0.5">{r.description}</p>
-                            </div>
-                            <div className="shrink-0 mr-1">
-                              <span className={`inline-flex items-center justify-center min-w-[30px] rounded-full px-3 py-1 text-sm font-bold ${
-                                isActive ? "bg-violet-600 text-white" : "bg-violet-50 text-violet-600"
-                              }`}>{r.membreCount}</span>
-                            </div>
+                      <div
+                        key={r.id}
+                        className={`relative flex items-center gap-3 px-4 py-3.5 transition-all cursor-pointer border-l-[3px] ${
+                          isActive
+                            ? "bg-violet-50 border-violet-600"
+                            : "border-transparent hover:bg-slate-50 hover:border-slate-200"
+                        }`}
+                        onClick={() => setSelectedRoleId(r.id)}
+                      >
+                        {/* Icône rôle */}
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${ROLE_BG[r.nom] || "bg-slate-50"}`}>
+                          {React.createElement(roleIcon, { size: 18, className: ROLE_ICONS[r.nom] || "text-slate-500" })}
+                        </div>
+
+                        {/* Info rôle */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-sm font-bold ${isActive ? "text-violet-900" : "text-slate-800"}`}>{r.nom}</span>
+                            {r.type === "Système" && (
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Système</span>
+                            )}
                           </div>
-                        </button>
-                        <div className="flex items-center gap-1.5 pr-4">
+                          <p className="text-xs text-slate-400 truncate mt-0.5">{r.description}</p>
+                          {r.creePar && r.type !== "Système" && (
+                            <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                              Par <span className="text-violet-500">{r.creePar}</span>
+                              {r.creeParEmail && <span className="text-slate-300"> · {r.creeParEmail}</span>}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Badge membres */}
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                          isActive ? "bg-violet-600 text-white" : "bg-violet-50 text-violet-600"
+                        }`}>
+                          {r.membreCount}
+                        </span>
+
+                        {/* Actions */}
+                        <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => openEditRole(r)}
-                            className="rounded-lg p-2 text-slate-400 hover:bg-violet-50 hover:text-violet-600 transition" title="Modifier">
-                            <Pencil size={16} />
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-100 hover:text-violet-600 transition" title="Modifier">
+                            <Pencil size={13} />
                           </button>
-                          <button onClick={() => { const nextId = "r" + (Math.max(...roles.map(x => parseInt(x.id.slice(1))), 0) + 1); const copy: RoleItem = { ...r, id: nextId, nom: r.nom + " (copie)", dateCreation: new Date().toISOString(), derniereModification: new Date().toISOString(), creePar: "Omayma Hoimdi" }; setRoles(prev => [...prev, copy]); setRolePermissions(prev => ({ ...prev, [nextId]: rolePermissions[r.id] ? { ...rolePermissions[r.id] } : buildDefaultPerms() })); }}
-                            className="rounded-lg p-2 text-slate-400 hover:bg-violet-50 hover:text-violet-600 transition" title="Dupliquer">
-                            <Copy size={16} />
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch("/api/roles", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ nom: r.nom + " (copie)", description: r.description, type: r.type, permissions: rolePermissions[r.id] || buildDefaultPerms() }),
+                                });
+                                if (res.ok) {
+                                  const created = await res.json();
+                                  const copy: RoleItem = { ...r, id: created.id || created._id, nom: r.nom + " (copie)", dateCreation: new Date().toISOString(), derniereModification: new Date().toISOString(), creePar: session?.user?.name || "Omayma Hoimdi", creeParEmail: session?.user?.email || "" };
+                                  setRoles(prev => [...prev, copy]);
+                                  setRolePermissions(prev => ({ ...prev, [copy.id]: rolePermissions[r.id] ? { ...rolePermissions[r.id] } : buildDefaultPerms() }));
+                                }
+                              } catch {}
+                            }}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-100 hover:text-violet-600 transition" title="Dupliquer">
+                            <Copy size={13} />
                           </button>
                           <button onClick={() => handleDeleteRole(r.id)}
-                            className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 transition" title="Supprimer">
-                            <Trash2 size={16} />
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition" title="Supprimer">
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="border-t border-slate-100 px-6 py-4">
-                  <button className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-600 transition">
-                    <Clock size={15} /> Voir les rôles archivés
+
+                {/* Pied de page */}
+                <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-between bg-slate-50/50 rounded-b-2xl">
+                  <button className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition">
+                    <Archive size={13} /> Archivés
                   </button>
+                  <span className="text-[10px] text-slate-300">
+                    {roles.filter(r => r.type === "Système").length} système · {roles.filter(r => r.type === "Personnalisé").length} personnalisé
+                  </span>
                 </div>
               </div>
 
-              {/* Center: Permissions table */}
-              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
-                {/* Header with action buttons */}
-                <div className="border-b border-slate-100 px-6 py-5">
+              {/* ======================== RIGHT : Matrice des Permissions ======================== */}
+              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col" style={{ minHeight: 620 }}>
+                {/* En-tête Permissions */}
+                <div className="border-b border-slate-100 px-6 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-base font-bold text-slate-900">Permissions du rôle</h3>
-                      <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">{selectedRole?.nom}</span>
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
+                        <Lock size={16} className="text-indigo-600" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-900">Permissions</h3>
+                          {selectedRole && (
+                            <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-700">
+                              {selectedRole.nom}
+                            </span>
+                          )}
+                        </div>
+                        {selectedRole?.creePar && selectedRole.type !== "Système" && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Créé par <span className="text-violet-500">{selectedRole.creePar}</span>
+                            {selectedRole.creeParEmail && <span> · {selectedRole.creeParEmail}</span>}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    {/* Boutons d'action rapide */}
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => {
                           const allTrue: PermissionMatrix[string] = {};
@@ -1760,10 +2067,11 @@ Format de réponse attendu (JSON valide uniquement) :
                             allTrue[item.id] = { voir: true, creer: true, modifier: true, supprimer: true, gerer: true };
                           }));
                           setRolePermissions(prev => ({ ...prev, [selectedRoleId]: allTrue }));
+                          fetch(`/api/roles/${selectedRoleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: allTrue }) }).catch(() => {});
                         }}
-                        className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition whitespace-nowrap"
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 transition"
                       >
-                        Tout sélectionner
+                        Tout
                       </button>
                       <button
                         onClick={() => {
@@ -1772,62 +2080,90 @@ Format de réponse attendu (JSON valide uniquement) :
                             allFalse[item.id] = { voir: false, creer: false, modifier: false, supprimer: false, gerer: false };
                           }));
                           setRolePermissions(prev => ({ ...prev, [selectedRoleId]: allFalse }));
+                          fetch(`/api/roles/${selectedRoleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: allFalse }) }).catch(() => {});
                         }}
-                        className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition whitespace-nowrap"
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition"
                       >
-                        Tout désélectionner
+                        Aucun
                       </button>
                       <button
-                        onClick={() => setRolePermissions(prev => ({ ...prev, [selectedRoleId]: INITIAL_PERMISSIONS[selectedRoleId] || {} }))}
-                        className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition whitespace-nowrap"
+                        onClick={() => {
+                          const defaultPerms = buildDefaultPerms();
+                          setRolePermissions(prev => ({ ...prev, [selectedRoleId]: defaultPerms }));
+                          fetch(`/api/roles/${selectedRoleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: defaultPerms }) }).catch(() => {});
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition"
                       >
-                        Réinitialiser
+                        Réinit.
                       </button>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1.5">Définissez les permissions et les accès pour ce rôle.</p>
                 </div>
-                <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
-                  <table className="w-full text-sm">
+
+                {/* Tableau des permissions — pleine largeur */}
+                <div className="flex-1 overflow-y-auto">
+                  <table className="w-full text-sm table-fixed">
                     <thead className="sticky top-0 z-10">
-                      <tr className="border-b-2 border-slate-200 bg-slate-100">
-                        <th className="px-6 py-4 text-left font-bold text-slate-700 text-xs uppercase tracking-wider">Permissions</th>
-                        <th className="px-5 py-4 text-center font-bold text-violet-700 text-xs uppercase tracking-wider bg-violet-50/50">Voir</th>
-                        <th className="px-5 py-4 text-center font-bold text-violet-700 text-xs uppercase tracking-wider bg-violet-50/50">Créer</th>
-                        <th className="px-5 py-4 text-center font-bold text-violet-700 text-xs uppercase tracking-wider bg-violet-50/50">Modifier</th>
-                        <th className="px-5 py-4 text-center font-bold text-violet-700 text-xs uppercase tracking-wider bg-violet-50/50">Supprimer</th>
-                        <th className="px-5 py-4 text-center font-bold text-violet-700 text-xs uppercase tracking-wider bg-violet-50/50">Gérer</th>
+                      <tr className="border-b-2 border-slate-200 bg-white">
+                        {/* Colonne permission : s’étend sur tout l’espace libre */}
+                        <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
+                          Permission
+                        </th>
+                        {/* Colonnes d’action : largeur égale fixée pour remplir horizontalement */}
+                        {(["Voir", "Créer", "Modifier", "Supprimer", "Gérer"] as const).map((label) => (
+                          <th key={label} style={{ width: "11%" }} className="py-3.5 text-center text-xs font-bold text-violet-700 uppercase tracking-wider bg-violet-50">
+                            {label}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {PERMISSION_CATEGORIES.map((cat, catIdx) => {
-                        const catIcon = { FolderKanban, LayoutList: LayoutList, Users, FileText, BarChart3, MessageSquare, Shield }[cat.icon] || FolderKanban;
+                      {PERMISSION_CATEGORIES.map((cat) => {
+                        const catIcon = ({
+                          FolderKanban, LayoutList, Users, FileText, BarChart3, MessageSquare, Shield
+                        } as Record<string, React.ElementType>)[cat.icon] || FolderKanban;
                         return (
                           <React.Fragment key={cat.name}>
+                            {/* Catégorie */}
                             <tr>
-                              <td colSpan={6} className="px-6 py-3 bg-indigo-50/60 border-b border-slate-100">
-                                <div className="flex items-center gap-2.5">
-                                  {React.createElement(catIcon, { size: 15, className: "text-indigo-500" })}
-                                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">{cat.name}</span>
+                              <td colSpan={6} className="px-5 py-2.5 bg-gradient-to-r from-violet-50 to-indigo-50 border-b border-slate-200">
+                                <div className="flex items-center gap-2">
+                                  {React.createElement(catIcon, { size: 13, className: "text-violet-500 shrink-0" })}
+                                  <span className="text-[11px] font-black text-violet-700 uppercase tracking-widest">{cat.name}</span>
                                 </div>
                               </td>
                             </tr>
+                            {/* Lignes de permissions */}
                             {cat.items.map((item, itemIdx) => {
                               const perms = rolePermissions[selectedRoleId]?.[item.id];
                               if (!perms) return null;
-                              const rowBg = itemIdx % 2 === 0 ? "bg-white" : "bg-slate-50/40";
                               return (
-                                <tr key={item.id} className={`${rowBg} hover:bg-violet-50/40 transition-colors group border-b border-slate-100`}>
-                                  <td className="px-6 py-3.5 text-sm font-semibold text-slate-700">{item.label}</td>
-                                  {(["voir", "creer", "modifier", "supprimer", "gerer"] as const).map((action, aIdx) => (
-                                    <td key={action} className={`px-5 py-3.5 text-center ${aIdx < 4 ? "border-r border-slate-100" : ""}`}>
-                                      <label className="relative inline-flex items-center justify-center cursor-pointer">
-                                        <input type="checkbox" checked={perms[action]} onChange={() => togglePerm(selectedRoleId, item.id, action)} className="sr-only peer" />
-                                        <div className={`w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center ${
-                                          perms[action] ? "bg-violet-600 border-violet-600 shadow-sm shadow-violet-200" : "bg-white border-slate-300 group-hover:border-violet-400"
+                                <tr
+                                  key={item.id}
+                                  className={`group border-b border-slate-100 transition-colors ${
+                                    itemIdx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                                  } hover:bg-violet-50/40`}
+                                >
+                                  <td className="px-5 py-3.5 text-sm font-semibold text-slate-800">
+                                    {item.label}
+                                  </td>
+                                  {/* Cases à cocher centrées dans chaque colonne d’action */}
+                                  {(["voir", "creer", "modifier", "supprimer", "gerer"] as const).map((action) => (
+                                    <td key={action} className="py-3.5 text-center">
+                                      <label className="inline-flex items-center justify-center cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={perms[action]}
+                                          onChange={() => togglePerm(selectedRoleId, item.id, action)}
+                                          className="sr-only peer"
+                                        />
+                                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                                          perms[action]
+                                            ? "bg-violet-600 border-violet-600 shadow-sm shadow-violet-200"
+                                            : "bg-white border-slate-300 group-hover:border-violet-400"
                                         }`}>
                                           {perms[action] && (
-                                            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
+                                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
                                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                             </svg>
                                           )}
@@ -1842,21 +2178,30 @@ Format de réponse attendu (JSON valide uniquement) :
                         );
                       })}
                     </tbody>
-
                   </table>
                 </div>
-                <div className="border-t border-slate-100 px-6 py-4 flex items-center justify-between">
-                  <button onClick={() => setRolePermissions(prev => ({ ...prev, [selectedRoleId]: INITIAL_PERMISSIONS[selectedRoleId] || {} }))} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition flex items-center gap-2">
-                    <RefreshCw size={15} /> Réinitialiser
-                  </button>
-                  <button onClick={() => { setSaveConfirm(true); setTimeout(() => setSaveConfirm(false), 2000); }} className={`flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white transition shadow-sm ${saveConfirm ? "bg-emerald-500 shadow-emerald-500/25" : "bg-gradient-to-r from-violet-600 to-purple-600 shadow-violet-500/25 hover:opacity-90"}`}>
-                    {saveConfirm ? <><CheckCircle size={15} /> Enregistré</> : <><Shield size={15} /> Enregistrer les modifications</>}
+
+                {/* Pied de page */}
+                <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-end bg-slate-50/50 rounded-b-2xl">
+                  <button
+                    onClick={() => { setSaveConfirm(true); setTimeout(() => setSaveConfirm(false), 2000); const role = roles.find(r => r.id === selectedRoleId); if (role) addActivity("perms_saved", `a enregistré les permissions du rôle "${role.nom}"`); }}
+                    className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition shadow-sm ${
+                      saveConfirm
+                        ? "bg-emerald-500 shadow-emerald-200"
+                        : "bg-gradient-to-r from-violet-600 to-purple-600 hover:opacity-90 shadow-violet-200"
+                    }`}
+                  >
+                    {saveConfirm
+                      ? <><CheckCircle size={15} /> Enregistré</>
+                      : <><Shield size={14} /> Enregistrer</>
+                    }
                   </button>
                 </div>
               </div>
 
             </div>
           )}
+
 
           {/* ===== INVITATIONS TAB ===== */}
           {activeTab === "Invitations" && (
@@ -1900,7 +2245,7 @@ Format de réponse attendu (JSON valide uniquement) :
               </div>
 
               {/* Table */}
-              <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+              <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
                 <table className="w-full text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50">
                     <tr>
@@ -1945,11 +2290,14 @@ Format de réponse attendu (JSON valide uniquement) :
                             </td>
                             <td className="px-5 py-4 text-sm text-slate-600">{inv.equipe}</td>
                             <td className="px-5 py-4">
-                              <div className="flex items-center gap-2">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-slate-500 text-[9px] font-bold">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-slate-500 text-[9px] font-bold">
                                   {inv.invitePar.split(" ").map(s => s[0]).join("")}
                                 </div>
-                                <span className="text-sm text-slate-600">{inv.invitePar}</span>
+                                <div className="min-w-0">
+                                  <span className="text-sm text-slate-600 whitespace-nowrap">{inv.invitePar}</span>
+                                  {inv.inviteParEmail && <span className="text-[10px] text-slate-400 block truncate">{inv.inviteParEmail}</span>}
+                                </div>
                               </div>
                             </td>
                             <td className="px-5 py-4 text-sm text-slate-600">
@@ -1986,6 +2334,11 @@ Format de réponse attendu (JSON valide uniquement) :
                                   </button>
                                 )}
                                 {inv.statut === "En attente" && (
+                                  <button onClick={() => handleAcceptInvitation(inv)} className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition" title="Accepter l'invitation">
+                                    <UserCheck size={15} />
+                                  </button>
+                                )}
+                                {inv.statut === "En attente" && (
                                   <button onClick={() => handleCancelInvitation(inv._id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition" title="Annuler l'invitation">
                                     <Ban size={15} />
                                   </button>
@@ -2002,6 +2355,9 @@ Format de réponse attendu (JSON valide uniquement) :
                                     <button onClick={() => openEditInvite(inv)} className="flex w-full items-center gap-2.5 px-4 py-2 text-xs text-slate-600 hover:bg-violet-50 hover:text-violet-700"><Pencil size={14} /> Modifier</button>
                                     {inv.statut !== "Acceptée" && inv.statut !== "Annulée" && (
                                       <button onClick={() => handleResendInvitation(inv._id)} className="flex w-full items-center gap-2.5 px-4 py-2 text-xs text-slate-600 hover:bg-violet-50 hover:text-violet-700"><RefreshCw size={14} /> Renvoyer</button>
+                                    )}
+                                    {inv.statut === "En attente" && (
+                                      <button onClick={() => handleAcceptInvitation(inv)} className="flex w-full items-center gap-2.5 px-4 py-2 text-xs text-emerald-600 hover:bg-emerald-50"><UserCheck size={14} /> Accepter</button>
                                     )}
                                     {inv.statut === "En attente" && (
                                       <button onClick={() => handleCancelInvitation(inv._id)} className="flex w-full items-center gap-2.5 px-4 py-2 text-xs text-red-600 hover:bg-red-50"><Ban size={14} /> Annuler</button>
@@ -2091,6 +2447,7 @@ Format de réponse attendu (JSON valide uniquement) :
                       <th className="px-6 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Projets</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Charge</th>
                       <th className="px-6 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Statut</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Créé par</th>
                       <th className="px-6 py-4 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -2158,6 +2515,16 @@ Format de réponse attendu (JSON valide uniquement) :
                             <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${
                               eq.statut === "Actif" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
                             }`}>{eq.statut}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {eq.creePar ? (
+                              <div>
+                                <p className="text-xs text-slate-600">{eq.creePar}</p>
+                                {eq.creeParEmail && <p className="text-[10px] text-slate-400">{eq.creeParEmail}</p>}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -2237,7 +2604,7 @@ Format de réponse attendu (JSON valide uniquement) :
                 </div>
                 <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={RAPPORT_PERFORMANCE} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <LineChart data={rapportPerformance} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                       <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                       <YAxis yAxisId="left" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
@@ -2260,8 +2627,8 @@ Format de réponse attendu (JSON valide uniquement) :
                     <div className="w-40 h-40 shrink-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={RAPPORT_TEAM_PROD} cx="50%" cy="50%" innerRadius={50} outerRadius={70} dataKey="value" paddingAngle={3} isAnimationActive={false}>
-                            {RAPPORT_TEAM_PROD.map((entry, i) => (
+                          <Pie data={rapportTeamProd} cx="50%" cy="50%" innerRadius={50} outerRadius={70} dataKey="value" paddingAngle={3} isAnimationActive={false}>
+                            {rapportTeamProd.map((entry, i) => (
                               <Cell key={i} fill={entry.couleur} strokeWidth={0} />
                             ))}
                           </Pie>
@@ -2269,13 +2636,13 @@ Format de réponse attendu (JSON valide uniquement) :
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ marginTop: "-20px" }}>
                         <div className="text-center">
-                          <p className="text-2xl font-bold text-slate-900">87%</p>
+                          <p className="text-2xl font-bold text-slate-900">{rapportTeamProd.length > 0 ? Math.round(rapportTeamProd.reduce((s, t) => s + t.value, 0) / rapportTeamProd.length) : 0}%</p>
                           <p className="text-[10px] text-slate-400">Moyenne globale</p>
                         </div>
                       </div>
                     </div>
                     <div className="flex-1 space-y-2.5">
-                      {RAPPORT_TEAM_PROD.map((t) => (
+                      {rapportTeamProd.map((t) => (
                         <div key={t.name} className="flex items-center gap-2">
                           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.couleur }} />
                           <span className="text-xs text-slate-600 flex-1">{t.name}</span>
@@ -2293,8 +2660,8 @@ Format de réponse attendu (JSON valide uniquement) :
                     <div className="w-40 h-40 shrink-0 relative">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={RAPPORT_TASKS_STATUS} cx="50%" cy="50%" innerRadius={50} outerRadius={70} dataKey="value" paddingAngle={3} isAnimationActive={false}>
-                            {RAPPORT_TASKS_STATUS.map((entry, i) => (
+                          <Pie data={rapportTasksByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={70} dataKey="value" paddingAngle={3} isAnimationActive={false}>
+                            {rapportTasksByStatus.map((entry, i) => (
                               <Cell key={i} fill={entry.couleur} strokeWidth={0} />
                             ))}
                           </Pie>
@@ -2302,8 +2669,8 @@ Format de réponse attendu (JSON valide uniquement) :
                       </ResponsiveContainer>
                     </div>
                     <div className="flex-1 space-y-2.5">
-                      <p className="text-xs text-slate-400 mb-2">253 tâches au total</p>
-                      {RAPPORT_TASKS_STATUS.map((t) => (
+                      <p className="text-xs text-slate-400 mb-2">{reportTasks.length} tâches au total</p>
+                      {rapportTasksByStatus.map((t) => (
                         <div key={t.name} className="flex items-center gap-2">
                           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.couleur }} />
                           <span className="text-xs text-slate-600 flex-1">{t.name}</span>
@@ -2397,7 +2764,7 @@ Format de réponse attendu (JSON valide uniquement) :
                 <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm lg:col-span-2">
                   <h3 className="text-base font-bold text-slate-900 mb-5">Activité récente</h3>
                   <div className="space-y-4">
-                    {RAPPORT_ACTIVITIES.map((act) => {
+                    {rapportActivities.map((act) => {
                       const Icon = { CheckCircle, FolderKanban, UserPlus, Shield, UserCheck }[act.icon as "CheckCircle" | "FolderKanban" | "UserPlus" | "Shield" | "UserCheck"] || Activity;
                       return (
                         <div key={act.id} className="flex items-start gap-3">
@@ -2427,7 +2794,7 @@ Format de réponse attendu (JSON valide uniquement) :
                   <h3 className="text-base font-bold text-slate-900 mb-4">Heures travaillées</h3>
                   <div className="h-52">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={RAPPORT_HOURS} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+                      <BarChart data={reportTasks.length > 0 ? (() => { const allCreatedAt = reportTasks.map((t: any) => new Date(t.createdAt || t.dateDebut || t.dateFin)).filter(d => !isNaN(d.getTime())); const minDate = new Date(Math.min(...allCreatedAt.map(d => d.getTime()))); const maxDate = new Date(Math.max(...allCreatedAt.map(d => d.getTime()))); const weekCount = Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / (7*86400000))); return Array.from({length: weekCount}, (_, w) => { const weekStart = new Date(minDate.getTime() + w * 7 * 86400000); const weekEnd = new Date(weekStart.getTime() + 7 * 86400000); const heures = reportTasks.filter(t => { const d = new Date(t.createdAt || t.dateDebut || t.dateFin); return d >= weekStart && d < weekEnd; }).length * 2; return { week: `S${w+1}`, heures }; }); })() : []} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                         <XAxis dataKey="week" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
@@ -2461,7 +2828,9 @@ Format de réponse attendu (JSON valide uniquement) :
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {RAPPORT_PROJECTS.map((p, i) => {
+                      {rapportProjects.length === 0 ? (
+                        <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-400">Aucun projet</td></tr>
+                      ) : rapportProjects.map((p, i) => {
                         const pColor = p.progression >= 80 ? "bg-emerald-500" : p.progression >= 50 ? "bg-violet-500" : p.progression >= 30 ? "bg-amber-500" : "bg-red-500";
                         return (
                           <tr key={i} className="hover:bg-slate-50 transition-colors">
@@ -2522,7 +2891,7 @@ Format de réponse attendu (JSON valide uniquement) :
                           <p className="text-xs text-slate-600">
                             <span className="font-medium text-slate-800">{act.user}</span> {act.action}
                           </p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">{act.time}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{act.time ? formatActivity(act.time) : ""}</p>
                         </div>
                       </div>
                     );
@@ -2718,6 +3087,17 @@ Format de réponse attendu (JSON valide uniquement) :
                       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Créé le</p>
                       <p className="text-sm font-medium text-slate-700">{new Date(eq.dateCreation).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>
                     </div>
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Créé par</p>
+                      {eq.creePar ? (
+                        <div>
+                          <p className="text-sm font-medium text-slate-700">{eq.creePar}</p>
+                          {eq.creeParEmail && <p className="text-[10px] text-slate-400">{eq.creeParEmail}</p>}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400">—</p>
+                      )}
+                    </div>
                     <div className="col-span-2">
                       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Membres ({eq.membres.length})</p>
                       <div className="flex flex-wrap gap-2">
@@ -2742,10 +3122,10 @@ Format de réponse attendu (JSON valide uniquement) :
                 <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
                   <h3 className="text-sm font-bold text-slate-900 mb-5">Activité récente</h3>
                   <div className="space-y-4">
-                    {TEAM_ACTIVITIES.slice(0, 4).map(act => (
+                    {activities.slice(0, 4).map(act => (
                       <div key={act.id} className="flex items-start gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-purple-100 text-violet-600 text-[10px] font-bold">
-                          {act.initials}
+                          {act.user.split(" ").map((s: string) => s[0]).join("").toUpperCase().slice(0, 2) || "?"}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm text-slate-700">
@@ -2753,7 +3133,7 @@ Format de réponse attendu (JSON valide uniquement) :
                           </p>
                           <div className="flex items-center gap-1 mt-0.5">
                             <Clock size={11} className="text-slate-400" />
-                            <span className="text-[11px] text-slate-400">{act.time}</span>
+                            <span className="text-[11px] text-slate-400">{act.time ? formatActivity(act.time) : ""}</span>
                           </div>
                         </div>
                       </div>
@@ -2843,8 +3223,213 @@ Format de réponse attendu (JSON valide uniquement) :
             </div>
           )}
 
+          {/* Activité tab is rendered below, outside the flex-row wrapper */}
+
         </div>
       </div>
+
+      {/* ===== ACTIVITÉ TAB (comme projets) ===== */}
+      {activeTab === "Activité" && (
+        <div className="flex gap-6">
+          {/* Main timeline */}
+          <div className="flex-1 min-w-0 space-y-4">
+            {/* Filters */}
+            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative">
+                  <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <select value={actFilterType} onChange={(e) => { setActFilterType(e.target.value); setActPage(1); }}
+                    className="rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs outline-none focus:border-violet-400 appearance-none cursor-pointer">
+                    <option value="">Toutes les activités</option>
+                    <option value="role_created">Création rôle</option>
+                    <option value="role_edited">Modification rôle</option>
+                    <option value="role_deleted">Suppression rôle</option>
+                    <option value="perm_toggled">Permission</option>
+                    <option value="perms_saved">Sauvegarde permissions</option>
+                  </select>
+                </div>
+                <div className="relative">
+                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <select value={actFilterMember} onChange={(e) => { setActFilterMember(e.target.value); setActPage(1); }}
+                    className="rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs outline-none focus:border-violet-400 appearance-none cursor-pointer">
+                    <option value="">Tous les membres</option>
+                    {[...new Set(roleActivities.map(a => a.userNom))].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <input type="date" value={actDateStart} onChange={(e) => { setActDateStart(e.target.value); setActPage(1); }}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-violet-400" />
+                <span className="text-xs text-slate-400">→</span>
+                <input type="date" value={actDateEnd} onChange={(e) => { setActDateEnd(e.target.value); setActPage(1); }}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-violet-400" />
+                <div className="relative flex-1 min-w-[160px]">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input value={actSearch} onChange={(e) => { setActSearch(e.target.value); setActPage(1); }}
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-violet-400"
+                    placeholder="Rechercher une activité..." />
+                </div>
+                {roleActivities.length > 0 && (
+                  <button onClick={() => { if (confirm("Vider l'historique ?")) setRoleActivities([]); }}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
+                    <Trash2 size={13} /> Vider
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Timeline */}
+            {actGrouped.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                <Activity size={48} className="mb-3 opacity-30" />
+                <p className="text-sm font-medium text-slate-500">Aucune activité</p>
+                <p className="text-xs text-slate-300 mt-1">Aucune activité ne correspond aux filtres sélectionnés</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {actGrouped.map(group => (
+                  <div key={group.date}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-px flex-1 bg-slate-100" />
+                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{group.label}</span>
+                      <div className="h-px flex-1 bg-slate-100" />
+                    </div>
+                    <div className="space-y-2">
+                      {group.items.map(item => {
+                        const badgeStyles: Record<string, string> = {
+                          role_created: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                          role_edited: "bg-violet-50 text-violet-700 border-violet-200",
+                          role_deleted: "bg-red-50 text-red-700 border-red-200",
+                          perm_toggled: "bg-orange-50 text-orange-700 border-orange-200",
+                          perms_saved: "bg-blue-50 text-blue-700 border-blue-200",
+                        };
+                        const badgeColors: Record<string, string> = {
+                          role_created: "bg-emerald-500", role_edited: "bg-violet-500", role_deleted: "bg-red-500",
+                          perm_toggled: "bg-orange-500", perms_saved: "bg-blue-500",
+                        };
+                        const badgeLabels: Record<string, string> = {
+                          role_created: "Rôle créé", role_edited: "Rôle modifié", role_deleted: "Rôle supprimé",
+                          perm_toggled: "Permission", perms_saved: "Permissions",
+                        };
+                        const badgeIcons: Record<string, React.ElementType> = {
+                          role_created: Plus, role_edited: Pencil, role_deleted: Trash2,
+                          perm_toggled: Lock, perms_saved: Shield,
+                        };
+                        const BadgeIcon = badgeIcons[item.type] || Activity;
+                        const initials = item.userNom.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+                        return (
+                          <div key={item.id} className="group relative flex gap-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-slate-200">
+                            <div className="flex flex-col items-center shrink-0">
+                              <div className={`h-3 w-3 rounded-full ${badgeColors[item.type] || "bg-slate-400"} ring-4 ring-white shadow-sm`} />
+                              <div className="w-px flex-1 bg-slate-100 mt-1" />
+                            </div>
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-purple-100 text-violet-600 text-sm font-bold">
+                              {initials}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <span className="text-sm font-semibold text-slate-900">{item.userNom}</span>
+                                  {item.userEmail && <span className="text-[11px] text-slate-400 ml-1.5">{item.userEmail}</span>}
+                                  <span className="text-sm text-slate-600"> {item.message}</span>
+                                  {item.project !== "Général" && <p className="text-sm font-medium text-slate-900 mt-0.5">{item.project}</p>}
+                                  <p className="text-xs text-slate-500 mt-0.5">{item.userRole}</p>
+                                </div>
+                                <span className={`shrink-0 inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[10px] font-medium ${badgeStyles[item.type] || "bg-slate-50 text-slate-600 border-slate-200"}`}>
+                                  <BadgeIcon size={11} /> {badgeLabels[item.type] || "Action"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-1.5">{formatDiscussionShortDate(item.date)}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {/* Load more */}
+                {actHasMore && (
+                  <div className="text-center pt-2">
+                    <button onClick={() => setActPage(prev => prev + 1)}
+                      className="rounded-xl border border-slate-200 px-6 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition">
+                      Afficher plus d&apos;activités ({actTotal - actPage * pageSizeActivities} restantes)
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right sidebar */}
+          <div className="w-72 shrink-0 space-y-4 hidden lg:block">
+            {/* Summary */}
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-900 mb-4">Résumé des activités</h3>
+              <div className="space-y-3">
+                {[
+                  { label: "Actions totales", value: actSummary.total, icon: Activity, color: "text-violet-600", bg: "bg-violet-50" },
+                  { label: "Rôles modifiés", value: actSummary.roles, icon: Shield, color: "text-emerald-600", bg: "bg-emerald-50" },
+                  { label: "Permissions modifiées", value: actSummary.permissions, icon: Lock, color: "text-orange-600", bg: "bg-orange-50" },
+                ].map(({ label, value, icon: Icon, color, bg }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`rounded-lg ${bg} p-2 ${color}`}><Icon size={14} /></div>
+                      <span className="text-xs text-slate-600">{label}</span>
+                    </div>
+                    <span className="text-sm font-bold text-slate-900">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Activity by role (donut) */}
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-900 mb-4">Activité par rôle</h3>
+              <div className="flex items-center gap-4">
+                <div className="shrink-0">
+                  <ResponsiveContainer width={100} height={100}>
+                    <PieChart>
+                      <Pie data={actByRole} dataKey="value" cx={50} cy={50} innerRadius={28} outerRadius={45} strokeWidth={0}>
+                        {actByRole.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  {actByRole.map((m, i) => (
+                    <div key={m.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                        <span className="text-[11px] text-slate-600">{m.name}</span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-800">{m.value}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Most frequent */}
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-900 mb-4">Activités les plus fréquentes</h3>
+              <div className="space-y-3">
+                {actFrequent.map(([type, count], i) => {
+                  const freqLabels: Record<string, string> = { role_created: "Rôles créés", role_edited: "Rôles modifiés", role_deleted: "Rôles supprimés", perm_toggled: "Permissions togglées", perms_saved: "Permissions sauvegardées" };
+                  const freqIcons: Record<string, React.ElementType> = { role_created: Plus, role_edited: Pencil, role_deleted: Trash2, perm_toggled: Lock, perms_saved: Shield };
+                  const freqColors: Record<string, string> = { role_created: "text-emerald-600 bg-emerald-50", role_edited: "text-violet-600 bg-violet-50", role_deleted: "text-red-600 bg-red-50", perm_toggled: "text-orange-600 bg-orange-50", perms_saved: "text-blue-600 bg-blue-50" };
+                  const FreqIcon = freqIcons[type] || Activity;
+                  return (
+                    <div key={type} className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-slate-300 w-4">{i + 1}</span>
+                      <div className={`rounded-lg p-1.5 ${freqColors[type] || "text-slate-600 bg-slate-50"}`}><FreqIcon size={12} /></div>
+                      <span className="flex-1 text-xs text-slate-600">{freqLabels[type] || type}</span>
+                      <span className="text-sm font-bold text-slate-900">{count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== ADD / EDIT MODAL ===== */}
       {showModal && (

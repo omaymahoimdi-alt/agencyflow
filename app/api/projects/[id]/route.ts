@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
-import Project from "@/models/Project";
 import { MockProject } from "@/lib/mock-db";
+import { logActivity } from "@/lib/activity";
 
 const STATUTS = ["En attente", "En cours", "En test", "Terminé", "Suspendu"] as const;
 const PRIORITES = ["Faible", "Moyenne", "Haute", "Urgente"] as const;
@@ -32,21 +31,9 @@ const validateProjectServer = (data: any) => {
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
-    let project;
     const { id } = await params;
-    try {
-      await connectDB();
-      project = await Project.findById(id)
-        .populate("clientId", "nomSociete responsable")
-        .populate("chefProjetId", "nom prenom");
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB for project");
-      project = await MockProject.findById(id);
-    }
+    console.log("Using mock DB for project detail");
+    const project = await MockProject.findById(id);
     if (!project) return NextResponse.json({ message: "Projet non trouvé" }, { status: 404 });
     return NextResponse.json(project);
   } catch (error) {
@@ -57,9 +44,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
+    const workspaceId = session?.user?.workspaceId || "mock-workspace";
+    const userId = session?.user?.id || "mock-user";
+    const userName = session?.user?.name || "Utilisateur";
+    const userEmail = session?.user?.email || "";
     const { id } = await params;
     const body = await request.json();
     
@@ -69,16 +57,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
     
     let project;
-    try {
-      await connectDB();
-      project = await Project.findByIdAndUpdate(id, body, { new: true })
-        .populate("clientId", "nomSociete responsable")
-        .populate("chefProjetId", "nom prenom");
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB to update project");
-      project = await MockProject.findByIdAndUpdate(id, body);
-    }
+    let oldTitle = "";
+    try { const old = await MockProject.findById(id); if (old) oldTitle = old.titre; } catch {}
+    console.log("Using mock DB to update project");
+    project = await MockProject.findByIdAndUpdate(id, body);
     if (!project) return NextResponse.json({ message: "Projet non trouvé" }, { status: 404 });
+    await logActivity({
+      workspaceId, userId, userName, userEmail,
+      entityType: "project",
+      entityId: id,
+      entityName: oldTitle || project.titre,
+      action: "updated",
+    });
     return NextResponse.json(project);
   } catch (error) {
     console.error("Error updating project:", error);
@@ -89,19 +79,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
-    }
+    const workspaceId = session?.user?.workspaceId || "mock-workspace";
+    const userId = session?.user?.id || "mock-user";
+    const userName = session?.user?.name || "Utilisateur";
+    const userEmail = session?.user?.email || "";
     let project;
     const { id } = await params;
-    try {
-      await connectDB();
-      project = await Project.findByIdAndDelete(id);
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB to delete project");
-      project = await MockProject.findByIdAndDelete(id);
-    }
+    console.log("Using mock DB to delete project");
+    project = await MockProject.findByIdAndDelete(id);
     if (!project) return NextResponse.json({ message: "Projet non trouvé" }, { status: 404 });
+    const deletedTitle = project.titre || "";
+    await logActivity({
+      workspaceId, userId, userName, userEmail,
+      entityType: "project",
+      entityId: id,
+      entityName: deletedTitle,
+      action: "deleted",
+    });
     return NextResponse.json({ message: "Projet supprimé" });
   } catch (error) {
     console.error("Error deleting project:", error);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Plus, Pencil, Trash2, X, CheckSquare, Search, Filter, ArrowUpDown, AlertCircle } from "lucide-react";
 import { addToCorbeille } from "@/lib/corbeille";
 
@@ -62,6 +63,8 @@ const validateTask = (data: typeof emptyForm) => {
 };
 
 export default function TasksPage() {
+  // Récupération de la session NextAuth pour identifier l'utilisateur connecté
+  const { data: session } = useSession();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filtered, setFiltered] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -212,11 +215,16 @@ export default function TasksPage() {
     await fetch(`/api/tasks/${id}`, { method: "DELETE" });
     refreshTasks();
     if (task) {
-      addToCorbeille({
+      // Identification automatique du responsable via la session de l'utilisateur connecté.
+      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
+      const userName = session?.user?.name || "Utilisateur inconnu";
+      const userEmail = session?.user?.email || "—";
+      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+      await addToCorbeille({
         id: "corbeille-tache-" + Date.now(),
         type: "Tâche",
         nom: task.titre,
-        supprimePar: { nom: "Moi", fonction: "Utilisateur", avatar: "M" },
+        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
         supprimeLe: new Date().toISOString(),
         supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         sourceData: task,

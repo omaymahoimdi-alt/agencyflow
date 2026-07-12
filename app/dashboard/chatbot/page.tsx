@@ -27,34 +27,22 @@ interface Conversation {
 }
 
 const DEFAULT_CONVS: Conversation[] = [
-  { id: "c1", titre: "Rapport hebdomadaire", preview: "Voici le résumé de la semaine...", time: "Il y a 2h" },
-  { id: "c2", titre: "Analyse du projet E-commerce", preview: "Le projet E-commerce avance bien...", time: "Il y a 5h" },
-  { id: "c3", titre: "Tâches en retard", preview: "Vous avez 8 tâches en retard...", time: "Hier" },
-  { id: "c4", titre: "Statistiques équipe", preview: "L'équipe a une productivité de 89%...", time: "Hier" },
-  { id: "c5", titre: "Budget des projets", preview: "Le budget total est de 245 000€...", time: "Il y a 2j" },
-  { id: "c6", titre: "Disponibilité équipe", preview: "3 membres sont disponibles...", time: "Il y a 3j" },
-  { id: "c7", titre: "Questions diverses", preview: "Comment configurer le déploiement ?...", time: "Il y a 5j" },
+  { id: "c1", titre: "Statistiques générales", preview: "Bonjour ! Je suis l'assistant AgencyFlow...", time: "À l'instant" },
 ];
 
 const DEFAULT_MSGS: Record<string, Message[]> = {
   c1: [
-    { id: "m1", role: "user", content: "Quels sont les projets en retard ?", time: "14:32" },
-    { id: "m2", role: "assistant", content: "Vous avez **2 projets en retard** :\n- Application Mobile Santé\n- CRM Integration", time: "14:32" },
-    { id: "m3", role: "user", content: "Qui travaille sur le projet E-commerce ?", time: "14:33" },
-    { id: "m4", role: "assistant", content: "Les membres assignés au projet **E-commerce** sont :\n- Ahmed Ben Ali\n- Omayma Hoimdi\n- Mohamed Salah", time: "14:33" },
-    { id: "m5", role: "user", content: "Combien de tâches sont terminées ?", time: "14:35" },
-    { id: "m6", role: "assistant", content: "**56 tâches terminées** sur 78 au total, soit **72%** d'avancement.", time: "14:35" },
+    { id: "m1", role: "user", content: "Bonjour", time: "12:00" },
+    { id: "m2", role: "assistant", content: "Bonjour ! Je suis l'assistant AgencyFlow. Posez-moi des questions sur vos **projets**, **tâches**, **équipe** ou **budget**.", time: "12:00" },
   ],
 };
 
-const SUGGESTIONS = ["Projets en retard", "Mes tâches", "Rapport hebdomadaire", "Statistiques équipe", "Budget des projets"];
+const SUGGESTIONS = ["Projets en cours", "Statistiques des tâches", "Membres de l'équipe", "Budget"];
 
 const RECENT_QUESTIONS = [
-  { q: "Quels sont les projets en retard ?", time: "14:32" },
-  { q: "Qui travaille sur le projet E-commerce ?", time: "14:33" },
-  { q: "Combien de tâches sont terminées ?", time: "14:35" },
-  { q: "Quel est le budget total ?", time: "Hier" },
-  { q: "Disponibilité de l'équipe ?", time: "Hier" },
+  { q: "Quels sont les projets actifs ?", time: "À l'instant" },
+  { q: "Combien de tâches sont terminées ?", time: "À l'instant" },
+  { q: "Qui est dans l'équipe ?", time: "À l'instant" },
 ];
 
 const DONUT_DATA = [
@@ -99,6 +87,22 @@ export default function ChatbotPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Real data from API
+  const [realProjects, setRealProjects] = useState<any[]>([]);
+  const [realTasks, setRealTasks] = useState<any[]>([]);
+  const [realTeam, setRealTeam] = useState<any[]>([]);
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/projects").then(r => r.json()).catch(() => []),
+      fetch("/api/tasks").then(r => r.json()).catch(() => []),
+      fetch("/api/team").then(r => r.json()).catch(() => []),
+    ]).then(([projects, tasks, team]) => {
+      setRealProjects(Array.isArray(projects) ? projects : []);
+      setRealTasks(Array.isArray(tasks) ? tasks : []);
+      setRealTeam(Array.isArray(team) ? team : []);
+    });
+  }, []);
 
   // Save conversations
   useEffect(() => { saveToLS(LS_CONV, conversations); }, [conversations]);
@@ -211,20 +215,76 @@ export default function ChatbotPage() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  const RESPONSES: [string, string][] = [
-    ["bonjour", "Bonjour ! Je suis l'assistant IA AgencyFlow. Je peux vous aider avec :\n- Projets : état d'avancement, retard, budget\n- Tâches : statistiques, répartition\n- Équipe : membres, disponibilité\n- Fonctionnement : créer une équipe, gérer les tâches\n\nPosez-moi une question !"],
-    ["salut", "Salut ! Comment puis-je vous aider aujourd'hui ?\n\nEssayez par exemple :\n- \"Quels sont les projets en retard ?\"\n- \"Combien de tâches sont terminées ?\"\n- \"Qui travaille sur le projet E-commerce ?\""],
-    ["merci", "De rien ! N'hésitez pas si vous avez d'autres questions."],
-    ["comment creer equipe", "Pour **créer une équipe** :\n1. Allez dans **Gestion équipe** dans le menu latéral\n2. Ouvrez l'onglet **Équipes**\n3. Cliquez sur **+ Créer une équipe**\n4. Remplissez le nom, la description, le responsable et les membres\n5. Cliquez sur **Enregistrer**\n\nVous pouvez aussi modifier, dupliquer ou supprimer une équipe depuis la liste."],
-    ["comment gerer tache", "Pour **gérer les tâches** :\n1. Ouvrez un projet depuis **Gestion projets**\n2. Allez dans l'onglet **Tâches**\n3. Vous pouvez :\n   - Créer une tâche avec **+ Nouvelle tâche**\n   - Filtrer par statut, priorité, assigné\n   - Changer la vue (Tableau / Kanban / Calendrier)\n   - Assigner des membres, ajouter des tags\n   - Suivre l'avancement avec les indicateurs KPI"],
-    ["projets en retard", "Vous avez **2 projets en retard** :\n- Application Mobile Santé (échéance dépassée de 5j)\n- CRM Integration (échéance dépassée de 2j)\n\nJe vous conseille de planifier une réunion d'urgence avec les équipes concernées."],
-    ["projet ecommerce", "Le projet **E-commerce** est mené par :\n- **Ahmed Ben Ali** (Développeur)\n- **Omayma Hoimdi** (Chef de projet)\n- **Mohamed Salah** (Développeur)\n- **Lina Ben Amor** (Designer)\n\nAvancement : **68%** — Budget consommé : 45 000€ / 80 000€"],
-    ["tache", "**56 tâches terminées** sur 78 au total, soit **72%** d'avancement global.\n\nRépartition :\n- Terminées : 56\n- En cours : 14\n- En attente : 5\n- Bloquées : 3"],
-    ["projet", "Voici les **12 projets actifs** :\n1. Site E-commerce (68%)\n2. Mobile App (45%)\n3. CRM Integration (30%)\n4. Admin Dashboard (82%)\n5. Refonte Blog (55%)\net 6 autres..."],
-    ["equipe", "L'équipe AgencyFlow compte **6 membres** :\n- Mohamed Salah (Développeur)\n- Ahmed Ben Ali (Développeur)\n- Omayma Hoimdi (Chef de projet)\n- Jane Smith (Designer)\n- Lina Ben Amor (Designer)\n- Karim Aouadi (Testeur)"],
-    ["budget", "Le **budget total** alloué est de **245 000€** dont **178 000€** déjà consommés (**73%**).\n\nPar projet :\n- E-commerce : 45k/80k€\n- Mobile App : 35k/60k€\n- CRM : 28k/45k€\n- Admin Dashboard : 22k/30k€"],
-    ["disponibilite", "**3 membres** sont disponibles cette semaine :\n- Jane Smith (Designer)\n- Lina Ben Amor (Designer)\n- Karim Aouadi (Testeur)\n\nMembres occupés :\n- Mohamed Salah (Mission client)\n- Ahmed Ben Ali (Sprint en cours)\n- Omayma Hoimdi (Réunions)"],
-  ];
+  function getDataReply(q: string): string | null {
+    const low = q.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // Project stats
+    if (low.includes("projet") && (low.includes("retard") || low.includes("retarde"))) {
+      const late = realProjects.filter((p: any) => {
+        if (!p.dateFin) return false;
+        return new Date(p.dateFin) < new Date() && p.statut !== "Terminé" && p.statut !== "Terminée" && p.statut !== "Termine" && p.statut !== "Terminee" && p.statut !== "Annulé" && p.statut !== "Annule";
+      });
+      if (late.length === 0) return "Aucun projet en retard. Tout est dans les délais !";
+      return `**${late.length} projet${late.length > 1 ? "s" : ""} en retard** :\n${late.slice(0, 6).map((p: any) => `- ${p.titre || p.nom} (échéance ${new Date(p.dateFin).toLocaleDateString("fr-FR")})`).join("\n")}`;
+    }
+
+    if (low.includes("tache") || low.includes("tâche")) {
+      const total = realTasks.length;
+      const statuses = ["Terminée", "Terminé", "Terminee"];
+      const done = realTasks.filter((t: any) => statuses.includes(t.statut)).length;
+      const encours = realTasks.filter((t: any) => t.statut === "En cours").length;
+      const bloque = realTasks.filter((t: any) => t.statut === "Bloquée" || t.statut === "Bloqué" || t.statut === "Bloquee").length;
+      const afaire = realTasks.filter((t: any) => t.statut === "À faire" || t.statut === "A faire").length;
+      if (total === 0) return "Aucune tâche pour le moment. Créez-en une depuis un projet.";
+      return `**${done} tâches terminées** sur ${total} au total, soit **${Math.round(done / total * 100)}%** d'avancement.\n\nRépartition :\n- Terminées : ${done}\n- En cours : ${encours}\n- À faire : ${afaire}\n- Bloquées : ${bloque}`;
+    }
+
+    if (low.includes("projet") || low.includes("projets")) {
+      const actifs = realProjects.filter((p: any) => p.statut !== "Terminé" && p.statut !== "Terminée" && p.statut !== "Termine" && p.statut !== "Annulé" && p.statut !== "Annule");
+      if (actifs.length === 0) return "Aucun projet actif.";
+      return `Voici les **${actifs.length} projets actifs** :\n${actifs.slice(0, 8).map((p: any) => {
+        const pTasks = realTasks.filter((t: any) => (t.projetId?._id || t.projetId) === p._id);
+        const done = pTasks.filter((t: any) => statuses.includes(t.statut)).length;
+        const pct = pTasks.length > 0 ? Math.round(done / pTasks.length * 100) : 0;
+        return `- ${p.titre || p.nom} (${pct}%)`;
+      }).join("\n")}${actifs.length > 8 ? `\net ${actifs.length - 8} autres...` : ""}`;
+    }
+
+    if (low.includes("equipe") || low.includes("équipe") || low.includes("membre")) {
+      if (realTeam.length === 0) return "Aucun membre dans l'équipe pour le moment. Ajoutez-en depuis la page Gestion équipe.";
+      return `L'équipe compte **${realTeam.length} membre${realTeam.length > 1 ? "s" : ""}** :\n${realTeam.slice(0, 10).map((m: any) => `- ${m.prenom} ${m.nom} (${m.role || "Membre"})`).join("\n")}`;
+    }
+
+    if (low.includes("budget")) {
+      const total = realProjects.reduce((s: number, p: any) => s + (p.budget || 0), 0);
+      if (total === 0) return "Aucune information budgétaire disponible.";
+      return `Le **budget total** alloué est de **${total.toLocaleString("fr-FR")}€** réparti sur ${realProjects.length} projet${realProjects.length > 1 ? "s" : ""}.\n\nPar projet :\n${realProjects.slice(0, 6).map((p: any) => `- ${p.titre || p.nom} : ${(p.budget || 0).toLocaleString("fr-FR")}€`).join("\n")}`;
+    }
+
+    if (low.includes("disponibilite") || low.includes("disponible")) {
+      return "Je ne peux pas vérifier la disponibilité en temps réel pour le moment. Consultez la page Gestion équipe pour voir les statuts.";
+    }
+
+    if (low.includes("bonjour") || low.includes("salut") || low.includes("hello")) {
+      return "Bonjour ! Je suis l'assistant AgencyFlow. Posez-moi des questions sur vos **projets**, **tâches**, **équipe** ou **budget**. Essayez par exemple : \"Combien de tâches sont terminées ?\" ou \"Quels sont les projets actifs ?\"";
+    }
+
+    if (low.includes("merci")) {
+      return "De rien ! N'hésitez pas si vous avez d'autres questions.";
+    }
+
+    if (low.includes("comment creer equipe") || low.includes("créer une équipe") || low.includes("creer equipe")) {
+      return "Pour **créer une équipe** :\n1. Allez dans **Gestion équipe** dans le menu latéral\n2. Ouvrez l'onglet **Équipes**\n3. Cliquez sur **+ Créer une équipe**\n4. Remplissez le nom, la description, le responsable et les membres\n5. Cliquez sur **Enregistrer**";
+    }
+
+    if (low.includes("comment creer") || low.includes("comment ajouter") || low.includes("comment faire")) {
+      return "Je peux vous guider pour :\n- **Créer une équipe** : dites \"créer une équipe\"\n- **Gérer les tâches** : dites \"gérer les tâches\"\n- **Ajouter un projet** : dites \"créer un projet\"\n- **Voir les statistiques** : dites \"projets\", \"tâches\" ou \"équipe\"";
+    }
+
+    return null;
+  }
+
+  const statuses = ["Terminée", "Terminé", "Terminee"];
 
   function handleSend() {
     const text = input.trim();
@@ -244,10 +304,9 @@ export default function ChatbotPage() {
     if (!text) return;
     setTimeout(() => {
       const q = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      let reply = "Je n'ai pas encore de données sur ce sujet. Posez une question sur les projets, tâches, équipe, budget ou le fonctionnement de l'application.";
-      const sorted = [...RESPONSES].sort((a, b) => b[0].length - a[0].length);
-      for (const [key, val] of sorted) {
-        if (q.includes(key)) { reply = val; break; }
+      let reply = getDataReply(q);
+      if (!reply) {
+        reply = "Je n'ai pas encore de données sur ce sujet. Posez une question sur les **projets**, **tâches**, **équipe** ou le **budget**.";
       }
       const botMsg: Message = { id: "m" + Date.now(), role: "assistant", content: reply, time: formatTime(new Date()) };
       setMessages(prev => [...prev, botMsg]);

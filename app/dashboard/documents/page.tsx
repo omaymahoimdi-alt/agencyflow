@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, Search, Filter, Download, FileText, FileImage, Trash2, X, Eye } from "lucide-react";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
+import { addToCorbeille } from "@/lib/corbeille";
 
 interface Project { _id: string; titre: string }
 interface TeamMember { _id: string; nom: string; prenom: string }
@@ -59,6 +61,7 @@ const validateDocument = (data: any) => {
 };
 
 export default function DocumentsPage() {
+  const { data: session } = useSession();
   const [documents, setDocuments] = useState<DocFile[]>([]);
   const [filtered, setFiltered] = useState<DocFile[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -185,6 +188,18 @@ export default function DocumentsPage() {
 
   async function handleDelete(doc: DocFile) {
     await fetch(`/api/documents/${doc._id}`, { method: "DELETE" });
+    const userName = session?.user?.name || "Utilisateur inconnu";
+    const userEmail = session?.user?.email || "—";
+    const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+    await addToCorbeille({
+      id: "corbeille-fichier-" + Date.now(),
+      type: "Fichier",
+      nom: doc.nomDocument + "." + (doc.type || "pdf"),
+      supprimePar: { nom: userName, email: userEmail, fonction: "Utilisateur", avatar: userAvatar },
+      supprimeLe: new Date().toISOString(),
+      supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      sourceData: doc,
+    });
     setShowDeleteModal(null);
     refreshDocs();
   }

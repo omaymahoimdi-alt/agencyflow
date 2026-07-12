@@ -70,10 +70,14 @@ function getInitials(p: string, n: string): string {
 }
 
 export default function ProductivitePage() {
-  const [entries, setEntries] = useState<ChronoEntry[]>(() => {
-    try { const saved = localStorage.getItem("af_chronos"); return saved ? JSON.parse(saved) : INITIAL_ENTRIES; } catch { return INITIAL_ENTRIES; }
-  });
-  useEffect(() => { try { localStorage.setItem("af_chronos", JSON.stringify(entries)); } catch {} }, [entries]);
+  const [entries, setEntries] = useState<ChronoEntry[]>(INITIAL_ENTRIES);
+  useEffect(() => {
+    try { const saved = localStorage.getItem("af_chronos"); if (saved) setEntries(JSON.parse(saved)); } catch {}
+  }, []);
+  useEffect(() => {
+    if (entries === INITIAL_ENTRIES) return;
+    try { localStorage.setItem("af_chronos", JSON.stringify(entries)); } catch {}
+  }, [entries]);
   const [activeTab, setActiveTab] = useState("Chronomètres actifs");
   const [showNewTimer, setShowNewTimer] = useState(false);
   const [newMembre, setNewMembre] = useState("");
@@ -89,12 +93,25 @@ export default function ProductivitePage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [pRes, tRes] = await Promise.all([
+      const [pRes, tRes, teamRes] = await Promise.all([
         fetch("/api/projects").then(r => r.json()).catch(() => []),
         fetch("/api/tasks").then(r => r.json()).catch(() => []),
+        fetch("/api/team").then(r => r.json()).catch(() => []),
       ]);
       setProjects(Array.isArray(pRes) ? pRes : []);
       setTasks(Array.isArray(tRes) ? tRes : []);
+      const apiMembers = Array.isArray(teamRes) ? teamRes : [];
+      if (apiMembers.length > 0) {
+        const mapped = apiMembers.map((m: any) => ({
+          id: m._id || m.id || "",
+          prenom: m.prenom || m.nom || "",
+          nom: m.nom || "",
+          email: m.email || "",
+          role: m.role || "",
+        }));
+        setTeamMembers(mapped);
+        try { localStorage.setItem("af_team_members", JSON.stringify(mapped)); } catch {}
+      }
     } catch { /* ignore */ }
     try {
       const stored = localStorage.getItem("af_team_members");
@@ -102,8 +119,9 @@ export default function ProductivitePage() {
         const parsed = JSON.parse(stored);
         const seen = new Set<string>();
         const deduped = (Array.isArray(parsed) ? parsed : []).filter((m: any) => {
-          if (seen.has(m.email)) return false;
-          seen.add(m.email);
+          const key = m.id || m.email;
+          if (seen.has(key)) return false;
+          seen.add(key);
           return true;
         });
         setTeamMembers(deduped.map((m: any) => ({
@@ -203,6 +221,44 @@ export default function ProductivitePage() {
       return { ...m, totalMinutes: total };
     }).sort((a, b) => b.totalMinutes - a.totalMinutes), [entries, teamMembers]);
 
+  // Task status helpers (matches real French statuses from API)
+  const tTerminee = (t: any) => t.statut === "Terminée" || t.statut === "Terminé" || t.statut === "Terminee";
+  const tBloquee = (t: any) => t.statut === "Bloquée" || t.statut === "Bloqué" || t.statut === "Bloquee";
+  const tEnCours = (t: any) => t.statut === "En cours";
+  const tAFaire = (t: any) => t.statut === "À faire" || t.statut === "A faire";
+
+  const completedTasksCount = useMemo(() => tasks.filter(tTerminee).length, [tasks]);
+  const totalTasksCount = useMemo(() => tasks.length, [tasks]);
+  const productivitePct = totalTasksCount > 0 ? Math.round(completedTasksCount / totalTasksCount * 100) : 0;
+
+  // Per-member task stats (match via employeId populated object)
+  const memberTaskStats = useMemo(() => {
+    return teamMembers.map(m => {
+      const memberTasks = tasks.filter((t: any) => {
+        const eid = t.employeId?._id || t.employeId;
+        return eid && eid === m.id;
+      });
+      const done = memberTasks.filter(tTerminee).length;
+      const blocked = memberTasks.filter(tBloquee).length;
+      return { ...m, taskCount: memberTasks.length, done, blocked };
+    });
+  }, [tasks, teamMembers]);
+
+  const rapportPerformanceEvolution = useMemo(() => {
+    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin"];
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    return months.slice(0, currentMonth + 1).map((month, idx) => {
+      const monthTasks = tasks.filter((t: any) => {
+        const d = new Date(t.createdAt || t.dateDebut || t.dateFin);
+        return !isNaN(d.getTime()) && d.getMonth() === idx;
+      });
+      const done = monthTasks.filter(tTerminee).length;
+      const total = monthTasks.length || 1;
+      return { month, val: Math.round(done / total * 100) };
+    });
+  }, [tasks]);
+
   const DONUT_COLORS = ["#7C3AED", "#6366F1", "#10B981", "#F59E0B", "#F472B6", "#94A3B8"];
 
   const tempsParProjet = useMemo(() => {
@@ -223,12 +279,14 @@ export default function ProductivitePage() {
   }, [entries]);
 
   // Real-time clock for active chronos
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
+  useEffect(() => { setNow(Date.now()); }, []);
   useEffect(() => {
     if (activeChronos.length > 0) { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }
   }, [activeChronos.length]);
 
   function getElapsed(entry: ChronoEntry): string {
+    if (now === 0) return "00:00:00";
     const endTime = entry.paused && entry.frozenAt ? new Date(entry.frozenAt).getTime() : now;
     const diff = Math.floor((endTime - new Date(entry.startTime).getTime()) / 1000);
     const h = Math.floor(diff / 3600);
@@ -239,13 +297,13 @@ export default function ProductivitePage() {
 
   function handleStartChrono() {
     if (!newMembre || !newTache || !newProjet) return;
-    const membre = teamMembers.find(m => m.email === newMembre);
+    const membre = teamMembers.find(m => m.id === newMembre);
     if (!membre) return;
     const end = new Date();
     // Stop existing active chrono for this member (auto-stop)
     setEntries(prev => {
       const stopped = prev.map(e =>
-        e.membre.email === newMembre && !e.endTime
+        e.membre.email === membre.email && !e.endTime
           ? {
               ...e,
               endTime: end.toISOString(),
@@ -321,28 +379,34 @@ export default function ProductivitePage() {
     setAiAnalysis(null);
     setTimeout(() => {
       const top = memberStats[0];
+      const topTaskStat = memberTaskStats.find(m => m.email === top?.email);
+      const topPct = topTaskStat && topTaskStat.taskCount > 0 ? Math.round(topTaskStat.done / topTaskStat.taskCount * 100) : 0;
+      const blockes = tasks.filter(tBloquee).length;
+      const enCours = tasks.filter(tEnCours).length;
       setAiAnalysis({
-        topPerformer: top ? `${top.prenom} ${top.nom}` : "Mohamed Salah",
-        score: Math.min(100, top ? Math.round(top.totalMinutes / 10) : 98),
-        completion: 87,
-        summary: `${top ? top.prenom : "L'équipe"} domine le classement avec le plus grand nombre de tâches terminées et un taux de productivité de 96%. La qualité du travail reste excellente avec 0 retard signalé ce mois-ci.`,
-        topMembers: memberStats.slice(0, 5).map((m, i) => ({
-          name: `${m.prenom} ${m.nom}`,
-          score: Math.min(100, Math.round(m.totalMinutes / 10) + (5 - i) * 3),
-          role: m.role,
-          badge: i === 0 ? "Productivity Master" : i === 1 ? "Top Performer" : undefined,
-        })),
-        struggling: ["Ahmed Ben Ali — Baisse de productivité (-15%)", "Karim Aouadi — 3 tâches en retard"],
-        risks: ["Refonte Site Web — Risque élevé de dépassement (15j)", "Mobile App — Dépendance bloquante"],
-        blocked: ["Authentification SSO — Bloqué par l'API externe", "Déploiement V3 — En attente validation QA"],
+        topPerformer: top ? `${top.prenom} ${top.nom}` : "—",
+        score: Math.min(100, top ? Math.round(top.totalMinutes / 10 || productivitePct) : 0),
+        completion: Math.round(completedTasksCount / (totalTasksCount || 1) * 100),
+        summary: `${top ? top.prenom : "L'équipe"} a ${completedTasksCount} tâches terminées sur ${totalTasksCount} (${productivitePct}% de productivité). ${blockes} tâches bloquées, ${enCours} en cours.`.substring(0, 250),
+        topMembers: memberStats.slice(0, 5).map((m, i) => {
+          const ts = memberTaskStats.find(mt => mt.email === m.email);
+          return {
+            name: `${m.prenom} ${m.nom}`,
+            score: Math.min(100, ts && ts.taskCount > 0 ? Math.round(ts.done / ts.taskCount * 100) : 50),
+            role: m.role,
+            badge: i === 0 ? "Productivity Master" : i === 1 ? "Top Performer" : undefined,
+          };
+        }),
+        struggling: memberStats.filter((_, i) => i >= Math.min(3, memberStats.length - 1)).slice(0, 2).map(m => `${m.prenom} ${m.nom} — Moins de temps enregistré`),
+        risks: [`${totalTasksCount} tâches total — ${enCours} en cours, ${blockes} bloquées`, `${teamMembers.length} membres dans l'équipe`],
+        blocked: tasks.filter(tBloquee).slice(0, 2).map((t: any) => `${t.titre} — Bloqué`),
         recommendations: [
-          "Réaffecter une ressource sur le projet Refonte Site Web pour réduire le risque de retard",
-          "Organiser une session de déblocage pour l'authentification SSO",
-          "Féliciter Mohamed Salah pour sa performance exemplaire et l'impliquer dans le mentorat",
-          "Planifier une revue hebdomadaire des tâches bloquées",
-          "Optimiser la répartition de la charge entre les membres de l'équipe",
+          completedTasksCount > 0 ? `Féliciter ${top?.prenom || "l'équipe"} — ${completedTasksCount} tâches terminées` : "Commencer à assigner des tâches",
+          blockes > 0 ? `Débloquer ${blockes} tâches bloquées pour améliorer la productivité` : "Aucune tâche bloquée",
+          enCours > 0 ? `Suivi des ${enCours} tâches en cours` : "Planifier les prochaines tâches",
+          `Optimiser la répartition de la charge entre les ${teamMembers.length} membres`,
         ],
-        prediction: "La performance devrait atteindre 95% le mois prochain avec une amélioration continue de la productivité. 3 projets seront livrés en avance.",
+        prediction: `Productivité actuelle de ${productivitePct}% avec ${completedTasksCount}/${totalTasksCount} tâches terminées.`,
       });
     }, 2000);
   }
@@ -376,7 +440,7 @@ export default function ProductivitePage() {
           { label: "Moyenne par membre", value: `${Math.floor(avgPerMembre / 60)}h ${avgPerMembre % 60}m`, evolution: "+8%", up: true, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
           { label: "Projets actifs", value: `${uniqueProjets}`, evolution: "+2", up: true, icon: FolderKanban, color: "text-indigo-600", bg: "bg-indigo-50" },
           { label: "Tâches suivies", value: `${uniqueTaches}`, evolution: "+15%", up: true, icon: CheckCircle, color: "text-amber-600", bg: "bg-amber-50" },
-          { label: "Productivité moyenne", value: "89%", evolution: "+6%", up: true, icon: TrendingUp, color: "text-rose-600", bg: "bg-rose-50" },
+          { label: "Productivité moyenne", value: `${productivitePct}%`, evolution: `${totalTasksCount} tâches`, up: true, icon: TrendingUp, color: "text-rose-600", bg: "bg-rose-50" },
         ].map(({ label, value, evolution, up, icon: Icon, color, bg }) => (
           <div key={label} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-slate-200">
             <div className={`rounded-xl ${bg} p-2.5 ${color} w-fit mb-3`}>
@@ -523,20 +587,23 @@ export default function ProductivitePage() {
                     <select value={newMembre} onChange={(e) => setNewMembre(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-violet-400 text-slate-700">
                       <option value="">Sélectionner un membre</option>
-                      {teamMembers.map(m => <option key={m.email} value={m.email}>{m.prenom} {m.nom}</option>)}
+                      {teamMembers.map(m => <option key={m.id || m.email} value={m.id}>{m.prenom} {m.nom}</option>)}
                     </select>
                   </div>
                   <button onClick={handleStartChrono} disabled={!newMembre || !newTache || !newProjet}
-                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/25 hover:opacity-90 disabled:opacity-50 transition">
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/25 hover:opacity-90 disabled:opacity-50 transition">
                     <Play size={15} /> Démarrer
                   </button>
                 </div>
-                {activeChronos.some(e => e.membre.email === newMembre) && newMembre && (
-                  <div className="flex items-center gap-2 mt-3 p-3 rounded-xl bg-indigo-50 text-indigo-700 text-xs">
-                    <AlertCircle size={14} className="shrink-0" />
-                    Le chrono existant pour ce membre sera automatiquement arrêté.
-                  </div>
-                )}
+                {(() => {
+                  const selMembre = teamMembers.find(m => m.id === newMembre);
+                  return selMembre && activeChronos.some(e => e.membre.email === selMembre.email) && newMembre ? (
+                    <div className="flex items-center gap-2 mt-3 p-3 rounded-xl bg-indigo-50 text-indigo-700 text-xs">
+                      <AlertCircle size={14} className="shrink-0" />
+                      Le chrono existant pour ce membre sera automatiquement arrêté.
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </>
           )}
@@ -710,14 +777,24 @@ export default function ProductivitePage() {
 
               {/* Row 1: 6 KPI cards */}
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-                {[
-                  { icon: TrendingUp, value: "92/100", label: "Score moyen équipe", evol: "+8%", up: true, color: "text-violet-600", bg: "bg-violet-50" },
-                  { icon: CheckCircle, value: "248", label: "Tâches terminées", evol: "+12%", up: true, color: "text-emerald-600", bg: "bg-emerald-50" },
-                  { icon: Clock, value: "632 h", label: "Heures travaillées", evol: "+15%", up: true, color: "text-indigo-600", bg: "bg-indigo-50" },
-                  { icon: TrendingUp, value: "91%", label: "Productivité moyenne", evol: "+7%", up: true, color: "text-amber-600", bg: "bg-amber-50" },
-                  { icon: Users, value: "184", label: "Collaborations", evol: "+10%", up: true, color: "text-rose-600", bg: "bg-rose-50" },
-                  { icon: FileText, value: "156", label: "Commentaires utiles", evol: "+9%", up: true, color: "text-sky-600", bg: "bg-sky-50" },
-                ].map(({ icon: Icon, value, label, evol, up, color, bg }) => (
+                {(() => {
+                  const scoreEq = teamMembers.length > 0
+                    ? Math.round(teamMembers.reduce((s, m) => {
+                        const mt = memberTaskStats.find(mt => mt.email === m.email);
+                        return s + (mt && mt.taskCount > 0 ? Math.round(mt.done / mt.taskCount * 100) : 0);
+                      }, 0) / teamMembers.length)
+                    : 0;
+                  const heuresStr = `${totalHours}h`;
+                  const collabCount = Math.max(teamMembers.length * 2, 1);
+                  return [
+                    { icon: TrendingUp, value: `${scoreEq}/100`, label: "Score moyen équipe", evol: "", up: true, color: "text-violet-600", bg: "bg-violet-50" },
+                    { icon: CheckCircle, value: `${completedTasksCount}`, label: "Tâches terminées", evol: `${totalTasksCount} total`, up: true, color: "text-emerald-600", bg: "bg-emerald-50" },
+                    { icon: Clock, value: heuresStr, label: "Heures travaillées", evol: `${teamMembers.length} membres`, up: true, color: "text-indigo-600", bg: "bg-indigo-50" },
+                    { icon: TrendingUp, value: `${productivitePct}%`, label: "Productivité moyenne", evol: "des tâches", up: true, color: "text-amber-600", bg: "bg-amber-50" },
+                    { icon: Users, value: `${collabCount}`, label: "Collaborations", evol: `${teamMembers.length} membres`, up: true, color: "text-rose-600", bg: "bg-rose-50" },
+                    { icon: FileText, value: `${uniqueProjets}`, label: "Projets actifs", evol: "ce mois", up: true, color: "text-sky-600", bg: "bg-sky-50" },
+                  ];
+                })().map(({ icon: Icon, value, label, evol, up, color, bg }) => (
                   <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                     <div className={`rounded-xl ${bg} p-2 ${color} w-fit mb-3`}><Icon size={16} /></div>
                     <p className="text-xl font-bold text-slate-900">{value}</p>
@@ -757,14 +834,21 @@ export default function ProductivitePage() {
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 mb-5">
-                          {[
-                            { l: "Tâches terminées", v: "52", c: "text-emerald-600", b: "bg-emerald-50" },
-                            { l: "Heures travaillées", v: "132h", c: "text-indigo-600", b: "bg-indigo-50" },
-                            { l: "Productivité", v: "96%", c: "text-violet-600", b: "bg-violet-50" },
-                            { l: "Jours sans retard", v: "18j", c: "text-amber-600", b: "bg-amber-50" },
-                            { l: "Collaborations", v: "34", c: "text-rose-600", b: "bg-rose-50" },
-                            { l: "Commentaires", v: "27", c: "text-sky-600", b: "bg-sky-50" },
-                          ].map(s => (
+                          {(() => {
+                            const mt = memberTaskStats.find(m => m.email === top.email);
+                            const tDone = mt?.done ?? 0;
+                            const tTotal = mt?.taskCount ?? 0;
+                            const prodPct = tTotal > 0 ? Math.round(tDone / tTotal * 100) : 0;
+                            const heuresStr = formatDuration(top.totalMinutes);
+                            return [
+                              { l: "Tâches terminées", v: `${tDone}`, c: "text-emerald-600", b: "bg-emerald-50" },
+                              { l: "Heures travaillées", v: heuresStr, c: "text-indigo-600", b: "bg-indigo-50" },
+                              { l: "Productivité", v: `${prodPct}%`, c: "text-violet-600", b: "bg-violet-50" },
+                              { l: "Tâches totales", v: `${tTotal}`, c: "text-amber-600", b: "bg-amber-50" },
+                              { l: "Tâches bloquées", v: `${mt?.blocked ?? 0}`, c: "text-rose-600", b: "bg-rose-50" },
+                              { l: "Rôle", v: top.role, c: "text-sky-600", b: "bg-sky-50" },
+                            ];
+                          })().map((s: any) => (
                             <div key={s.l} className={`rounded-xl ${s.b} px-3 py-2`}>
                               <p className={`text-sm font-bold ${s.c}`}>{s.v}</p>
                               <p className="text-[10px] text-slate-500">{s.l}</p>
@@ -852,10 +936,7 @@ export default function ProductivitePage() {
                   <h3 className="text-sm font-bold text-slate-900 mb-5">Évolution de la performance</h3>
                   <div className="h-48">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={[
-                        { month: "Jan", val: 82 }, { month: "Fév", val: 86 }, { month: "Mar", val: 89 },
-                        { month: "Avr", val: 91 }, { month: "Mai", val: 95 }, { month: "Juin", val: 98 },
-                      ]}>
+                      <LineChart data={rapportPerformanceEvolution.length > 0 ? rapportPerformanceEvolution : [{ month: "Jan", val: 0 }]}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                         <YAxis domain={[70, 100]} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
@@ -894,14 +975,21 @@ export default function ProductivitePage() {
                 <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
                   <h3 className="text-sm font-bold text-slate-900 mb-5">Performance complète</h3>
                   <div className="space-y-4">
-                    {[
-                      { label: "Productivité globale", pct: 98, color: "bg-violet-500" },
-                      { label: "Rapidité", pct: 92, color: "bg-indigo-500" },
-                      { label: "Qualité", pct: 99, color: "bg-emerald-500" },
-                      { label: "Collaboration", pct: 90, color: "bg-amber-500" },
-                      { label: "Communication", pct: 95, color: "bg-rose-500" },
-                      { label: "Ponctualité", pct: 100, color: "bg-sky-500" },
-                    ].map((bar, i) => (
+                  {(() => {
+                    const totalT = totalTasksCount || 1;
+                    const doneT = completedTasksCount;
+                    const inProgressT = tasks.filter(tEnCours).length;
+                    const blockedT = tasks.filter(tBloquee).length;
+                    const aFaireT = tasks.filter(tAFaire).length;
+                    return [
+                      { label: "Productivité globale", pct: Math.round(doneT / totalT * 100), color: "bg-violet-500" },
+                      { label: "En cours", pct: Math.round(inProgressT / totalT * 100), color: "bg-indigo-500" },
+                      { label: "Terminées", pct: Math.round(doneT / totalT * 100), color: "bg-emerald-500" },
+                      { label: "Bloquées", pct: Math.round(blockedT / totalT * 100), color: "bg-amber-500" },
+                      { label: "À faire", pct: Math.round(aFaireT / totalT * 100), color: "bg-rose-500" },
+                      { label: "Total tâches", pct: 100, color: "bg-sky-500" },
+                    ];
+                  })().map((bar, i) => (
                       <div key={i}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-medium text-slate-600">{bar.label}</span>
@@ -1162,7 +1250,7 @@ export default function ProductivitePage() {
                 <select value={newMembre} onChange={(e) => setNewMembre(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 bg-white text-slate-700">
                   <option value="">Sélectionner un membre</option>
-                  {teamMembers.map(m => <option key={m.email} value={m.email}>{m.prenom} {m.nom}</option>)}
+                  {teamMembers.map(m => <option key={m.id || m.email} value={m.id}>{m.prenom} {m.nom}</option>)}
                 </select>
               </div>
               <div>
@@ -1170,12 +1258,15 @@ export default function ProductivitePage() {
                 <textarea rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description du travail..."
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 resize-none" />
               </div>
-              {activeChronos.some(e => e.membre.email === newMembre) && newMembre && (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-indigo-50 text-indigo-700 text-xs">
-                  <AlertCircle size={14} className="shrink-0" />
-                  Le chrono existant pour ce membre sera automatiquement arrêté.
-                </div>
-              )}
+              {(() => {
+                const selMembre = teamMembers.find(m => m.id === newMembre);
+                return selMembre && activeChronos.some(e => e.membre.email === selMembre.email) && newMembre ? (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-indigo-50 text-indigo-700 text-xs">
+                    <AlertCircle size={14} className="shrink-0" />
+                    Le chrono existant pour ce membre sera automatiquement arrêté.
+                  </div>
+                ) : null;
+              })()}
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowNewTimer(false)}
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Annuler</button>

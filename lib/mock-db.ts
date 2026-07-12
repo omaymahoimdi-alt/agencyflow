@@ -1,4 +1,4 @@
-import { hash } from "bcryptjs";
+import { hash, hashSync } from "bcryptjs";
 import fs from "fs";
 import path from "path";
 
@@ -11,6 +11,7 @@ interface User {
   password: string;
   role: string;
   avatar: string;
+  activeWorkspaceId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -102,8 +103,9 @@ interface Client {
   telephone: string;
   adresse: string;
   secteurActivite: string;
+  budget?: number;
   dateCreation: Date;
-  userId: string;
+  workspaceId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -119,7 +121,7 @@ interface Project {
   priorite: string;
   clientId: string;
   chefProjet?: string;
-  userId: string;
+  workspaceId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -134,7 +136,7 @@ interface Task {
   dateFin?: string;
   projetId: string;
   employeId?: string;
-  userId: string;
+  workspaceId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -150,6 +152,7 @@ interface TeamUser {
   avatar?: string;
   dateEmbauche?: string;
   userId?: string;
+  workspaceId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -163,7 +166,7 @@ interface Document {
   dateUpload: string;
   projectId: string;
   uploadedBy: string;
-  userId: string;
+  workspaceId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -182,7 +185,10 @@ interface ClientComment {
   _id: string;
   clientId: string;
   userId: string;
+  userName: string;
+  userEmail: string;
   comment: string;
+  workspaceId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -194,6 +200,8 @@ interface ClientDocument {
   fileUrl: string;
   fileSize: number;
   uploadedBy: string;
+  uploadedByName: string;
+  uploadedByEmail: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -202,6 +210,20 @@ interface ClientActivity {
   _id: string;
   clientId: string;
   userId: string;
+  userName: string;
+  userEmail: string;
+  action: string;
+  description: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ProjectActivity {
+  _id: string;
+  projectId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
   action: string;
   description: string;
   createdAt: Date;
@@ -217,6 +239,9 @@ interface ClientReminder {
   endDate?: string;
   priority: string;
   status: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdByEmail?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -231,6 +256,9 @@ interface ClientEmail {
   status: string;
   attachmentUrl?: string;
   attachmentName?: string;
+  sentBy: string;
+  sentByName: string;
+  sentByEmail: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -264,6 +292,36 @@ interface ClientInvoice {
   updatedAt: Date;
 }
 
+interface WorkspaceRecord {
+  _id: string;
+  nom: string;
+  ownerId: string;
+  description: string;
+  logo: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface WorkspaceMemberRecord {
+  _id: string;
+  workspaceId: string;
+  userId: string;
+  role: string;
+  equipe: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TeamRecord {
+  _id: string;
+  workspaceId: string;
+  nom: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Paths to JSON files
 const DATA_DIR = path.join(process.cwd(), "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
@@ -285,6 +343,8 @@ const COUNTERS_FILE = path.join(DATA_DIR, "counters.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const CLIENT_ACTIVITIES_FILE =
  path.join(DATA_DIR, "clientActivities.json");
+const PROJECT_ACTIVITIES_FILE =
+ path.join(DATA_DIR, "projectActivities.json");
 
 const CLIENT_COMMENTS_FILE =
  path.join(DATA_DIR, "clientComments.json");
@@ -307,23 +367,81 @@ const CLIENT_LOCATIONS_FILE =
 const CLIENT_INVOICES_FILE =
  path.join(DATA_DIR, "clientInvoices.json");
 
+const WORKSPACES_FILE = path.join(DATA_DIR, "workspaces.json");
+const WORKSPACE_MEMBERS_FILE = path.join(DATA_DIR, "workspaceMembers.json");
+const TEAMS_FILE = path.join(DATA_DIR, "teams.json");
+const ACTIVITIES_FILE = path.join(DATA_DIR, "activities.json");
+const EVENTS_FILE = path.join(DATA_DIR, "events.json");
+const NOTIFICATIONS_FILE = path.join(DATA_DIR, "notifications.json");
+const COMMENTS_FILE = path.join(DATA_DIR, "comments.json");
+const DISCUSSION_MESSAGES_FILE = path.join(DATA_DIR, "discussionMessages.json");
+const ROLES_FILE = path.join(DATA_DIR, "roles.json");
+
 // Helper to load data from JSON file
-function loadData<T>(filePath: string, defaultValue: T): T {
+// In-memory cache so sync loadData sees writes made by async saveData
+const memoryCache = new Map<string, any>();
+
+// Preload cache from MongoDB on Vercel startup
+if (process.env.VERCEL || process.env.MONGODB_URI) {
+  (async () => {
+    try {
+      const { default: DataStore } = await import("@/models/DataStore");
+      const { connectDB } = await import("@/lib/mongodb");
+      await connectDB();
+      const allDocs = await DataStore.find({}).lean();
+      for (const doc of allDocs) {
+        memoryCache.set(doc.key as string, doc.value);
+      }
+      console.log(`Preloaded ${allDocs.length} keys from MongoDB DataStore`);
+    } catch (e) {
+      console.error("DataStore preload failed (normal on first deploy):", e);
+    }
+  })();
+}
+
+export function loadData<T>(filePath: string, defaultValue: T): T {
+  // Check in-memory cache first (has latest writes from saveData)
+  if (memoryCache.has(filePath)) {
+    return memoryCache.get(filePath) as T;
+  }
+  // Fall back to JSON file (bundled on Vercel, or local dev)
   if (!fs.existsSync(filePath)) {
     return defaultValue;
   }
   try {
     const data = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(data);
+    const parsed = JSON.parse(data);
+    memoryCache.set(filePath, parsed);
+    return parsed;
   } catch (error) {
     console.error(`Error loading data from ${filePath}:`, error);
     return defaultValue;
   }
 }
 
-// Helper to save data to JSON file
-function saveData<T>(filePath: string, data: T) {
+// Helper to save data — uses MongoDB on Vercel, falls back to JSON file
+export async function saveData<T>(filePath: string, data: T) {
+  // Always update in-memory cache so sync loadData sees latest writes immediately
+  memoryCache.set(filePath, data);
+  // On Vercel (or when MONGODB_URI is set), persist via MongoDB DataStore
+  if (process.env.VERCEL || process.env.MONGODB_URI) {
+    try {
+      const { default: DataStore } = await import("@/models/DataStore");
+      const { connectDB } = await import("@/lib/mongodb");
+      await connectDB();
+      await DataStore.findOneAndUpdate(
+        { key: filePath },
+        { key: filePath, value: JSON.parse(JSON.stringify(data)) },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.error("MongoDB saveData failed:", e);
+    }
+  }
+  // Local dev: write to JSON file
   try {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   } catch (error) {
     console.error(`Error saving data to ${filePath}:`, error);
@@ -340,6 +458,8 @@ function initializeFiles() {
 
 if (!fs.existsSync(CLIENT_ACTIVITIES_FILE))
  saveData(CLIENT_ACTIVITIES_FILE, {});
+if (!fs.existsSync(PROJECT_ACTIVITIES_FILE))
+ saveData(PROJECT_ACTIVITIES_FILE, {});
 
 if (!fs.existsSync(CLIENT_DOCUMENTS_FILE))
  saveData(CLIENT_DOCUMENTS_FILE, {});
@@ -366,6 +486,15 @@ if (!fs.existsSync(CLIENT_INVOICES_FILE))
   if (!fs.existsSync(AGENCY_PROJECTS_FILE)) saveData(AGENCY_PROJECTS_FILE, {});
   if (!fs.existsSync(TASKS_FILE)) saveData(TASKS_FILE, {});
   if (!fs.existsSync(TEAM_FILE)) saveData(TEAM_FILE, {});
+  if (!fs.existsSync(WORKSPACES_FILE)) saveData(WORKSPACES_FILE, {});
+  if (!fs.existsSync(WORKSPACE_MEMBERS_FILE)) saveData(WORKSPACE_MEMBERS_FILE, {});
+  if (!fs.existsSync(TEAMS_FILE)) saveData(TEAMS_FILE, {});
+  if (!fs.existsSync(ACTIVITIES_FILE)) saveData(ACTIVITIES_FILE, {});
+  if (!fs.existsSync(EVENTS_FILE)) saveData(EVENTS_FILE, {});
+  if (!fs.existsSync(NOTIFICATIONS_FILE)) saveData(NOTIFICATIONS_FILE, {});
+  if (!fs.existsSync(COMMENTS_FILE)) saveData(COMMENTS_FILE, {});
+  if (!fs.existsSync(DISCUSSION_MESSAGES_FILE)) saveData(DISCUSSION_MESSAGES_FILE, {});
+  if (!fs.existsSync(ROLES_FILE)) saveData(ROLES_FILE, {});
   if (!fs.existsSync(DOCUMENTS_FILE)) saveData(DOCUMENTS_FILE, {});
   if (!fs.existsSync(SKILLS_FILE)) saveData(SKILLS_FILE, {});
   if (!fs.existsSync(EXPERIENCES_FILE)) saveData(EXPERIENCES_FILE, {});
@@ -389,7 +518,16 @@ if (!fs.existsSync(CLIENT_INVOICES_FILE))
       testimonialId: 1,
       messageId: 1,
       clientId: 1,
-      invitationId: 1
+      invitationId: 1,
+      workspaceId: 1,
+      workspaceMemberId: 1,
+      teamGroupId: 1,
+      activityId: 1,
+      eventId: 1,
+      notificationId: 1,
+      commentId: 1,
+      discussionMessageId: 1,
+      roleId: 1
     });
   }
 }
@@ -398,116 +536,131 @@ initializeFiles();
 
 // Helper functions to load/save data fresh each time
 function getUsers() { return loadData<Record<string, User>>(USERS_FILE, {}); }
-function setUsers(data: Record<string, User>) { saveData(USERS_FILE, data); }
+async function setUsers(data: Record<string, User>) { await saveData(USERS_FILE, data); }
 
 function getPortfolios() { return loadData<Record<string, Portfolio>>(PORTFOLIOS_FILE, {}); }
-function setPortfolios(data: Record<string, Portfolio>) { saveData(PORTFOLIOS_FILE, data); }
+async function setPortfolios(data: Record<string, Portfolio>) { await saveData(PORTFOLIOS_FILE, data); }
 
 function getPortfolioProjects() { return loadData<Record<string, PortfolioProject>>(PORTFOLIO_PROJECTS_FILE, {}); }
-function setPortfolioProjects(data: Record<string, PortfolioProject>) { saveData(PORTFOLIO_PROJECTS_FILE, data); }
+async function setPortfolioProjects(data: Record<string, PortfolioProject>) { await saveData(PORTFOLIO_PROJECTS_FILE, data); }
 
 function getAgencyProjects() { return loadData<Record<string, Project>>(AGENCY_PROJECTS_FILE, {}); }
-function setAgencyProjects(data: Record<string, Project>) { saveData(AGENCY_PROJECTS_FILE, data); }
+async function setAgencyProjects(data: Record<string, Project>) { await saveData(AGENCY_PROJECTS_FILE, data); }
 
 function getTasks() { return loadData<Record<string, Task>>(TASKS_FILE, {}); }
-function setTasks(data: Record<string, Task>) { saveData(TASKS_FILE, data); }
+async function setTasks(data: Record<string, Task>) { await saveData(TASKS_FILE, data); }
 
 function getTeam() { return loadData<Record<string, TeamUser>>(TEAM_FILE, {}); }
-function setTeam(data: Record<string, TeamUser>) { saveData(TEAM_FILE, data); }
+async function setTeam(data: Record<string, TeamUser>) { await saveData(TEAM_FILE, data); }
 
 function getDocuments() { return loadData<Record<string, Document>>(DOCUMENTS_FILE, {}); }
-function setDocuments(data: Record<string, Document>) { saveData(DOCUMENTS_FILE, data); }
+async function setDocuments(data: Record<string, Document>) { await saveData(DOCUMENTS_FILE, data); }
 
 function getSkills() { return loadData<Record<string, Skill>>(SKILLS_FILE, {}); }
-function setSkills(data: Record<string, Skill>) { saveData(SKILLS_FILE, data); }
+async function setSkills(data: Record<string, Skill>) { await saveData(SKILLS_FILE, data); }
 
 function getExperiences() { return loadData<Record<string, Experience>>(EXPERIENCES_FILE, {}); }
-function setExperiences(data: Record<string, Experience>) { saveData(EXPERIENCES_FILE, data); }
+async function setExperiences(data: Record<string, Experience>) { await saveData(EXPERIENCES_FILE, data); }
 
 function getTestimonials() { return loadData<Record<string, Testimonial>>(TESTIMONIALS_FILE, {}); }
-function setTestimonials(data: Record<string, Testimonial>) { saveData(TESTIMONIALS_FILE, data); }
+async function setTestimonials(data: Record<string, Testimonial>) { await saveData(TESTIMONIALS_FILE, data); }
 
 function getClients() { return loadData<Record<string, Client>>(CLIENTS_FILE, {}); }
-function setClients(data: Record<string, Client>) { saveData(CLIENTS_FILE, data); }
+async function setClients(data: Record<string, Client>) { await saveData(CLIENTS_FILE, data); }
 
 function getEmailToId() { return loadData<Record<string, string>>(EMAIL_TO_ID_FILE, {}); }
-function setEmailToId(data: Record<string, string>) { saveData(EMAIL_TO_ID_FILE, data); }
+async function setEmailToId(data: Record<string, string>) { await saveData(EMAIL_TO_ID_FILE, data); }
 
 function getSlugToId() { return loadData<Record<string, string>>(SLUG_TO_ID_FILE, {}); }
-function setSlugToId(data: Record<string, string>) { saveData(SLUG_TO_ID_FILE, data); }
+async function setSlugToId(data: Record<string, string>) { await saveData(SLUG_TO_ID_FILE, data); }
 
 function getPortfolioMessages() { return loadData<Record<string, Message>>(PORTFOLIO_MESSAGES_FILE, {}); }
-function setPortfolioMessages(data: Record<string, Message>) { saveData(PORTFOLIO_MESSAGES_FILE, data); }
+async function setPortfolioMessages(data: Record<string, Message>) { await saveData(PORTFOLIO_MESSAGES_FILE, data); }
 
 function getTeamMessages() { return loadData<Record<string, TeamMessage>>(TEAM_MESSAGES_FILE, {}); }
-function setTeamMessages(data: Record<string, TeamMessage>) { saveData(TEAM_MESSAGES_FILE, data); }
+async function setTeamMessages(data: Record<string, TeamMessage>) { await saveData(TEAM_MESSAGES_FILE, data); }
 function getClientComments() {
   return loadData<
     Record<string, ClientComment>
   >(CLIENT_COMMENTS_FILE, {});
 }
 
-function setClientComments(
+async function setClientComments(
  data: Record<string, ClientComment>
 ) {
- saveData(CLIENT_COMMENTS_FILE, data);
+ await saveData(CLIENT_COMMENTS_FILE, data);
 }
 
 function getClientDocuments() {
   return loadData<Record<string, ClientDocument>>(CLIENT_DOCUMENTS_FILE, {});
 }
 
-function setClientDocuments(data: Record<string, ClientDocument>) {
-  saveData(CLIENT_DOCUMENTS_FILE, data);
+async function setClientDocuments(data: Record<string, ClientDocument>) {
+  await saveData(CLIENT_DOCUMENTS_FILE, data);
 }
 
 function getClientActivities() {
   return loadData<Record<string, ClientActivity>>(CLIENT_ACTIVITIES_FILE, {});
 }
 
-function setClientActivities(data: Record<string, ClientActivity>) {
-  saveData(CLIENT_ACTIVITIES_FILE, data);
+async function setClientActivities(data: Record<string, ClientActivity>) {
+  await saveData(CLIENT_ACTIVITIES_FILE, data);
+}
+function getProjectActivities() {
+  return loadData<Record<string, ProjectActivity>>(PROJECT_ACTIVITIES_FILE, {});
+}
+async function setProjectActivities(data: Record<string, ProjectActivity>) {
+  await saveData(PROJECT_ACTIVITIES_FILE, data);
 }
 
 function getClientReminders() {
   return loadData<Record<string, ClientReminder>>(CLIENT_REMINDERS_FILE, {});
 }
 
-function setClientReminders(data: Record<string, ClientReminder>) {
-  saveData(CLIENT_REMINDERS_FILE, data);
+async function setClientReminders(data: Record<string, ClientReminder>) {
+  await saveData(CLIENT_REMINDERS_FILE, data);
 }
 
 function getClientEmails() {
   return loadData<Record<string, ClientEmail>>(CLIENT_EMAILS_FILE, {});
 }
 
-function setClientEmails(data: Record<string, ClientEmail>) {
-  saveData(CLIENT_EMAILS_FILE, data);
+async function setClientEmails(data: Record<string, ClientEmail>) {
+  await saveData(CLIENT_EMAILS_FILE, data);
 }
 
 function getClientTags() {
   return loadData<Record<string, ClientTag>>(CLIENT_TAGS_FILE, {});
 }
 
-function setClientTags(data: Record<string, ClientTag>) {
-  saveData(CLIENT_TAGS_FILE, data);
+async function setClientTags(data: Record<string, ClientTag>) {
+  await saveData(CLIENT_TAGS_FILE, data);
 }
 
 function getClientLocations() {
   return loadData<Record<string, ClientLocation>>(CLIENT_LOCATIONS_FILE, {});
 }
 
-function setClientLocations(data: Record<string, ClientLocation>) {
-  saveData(CLIENT_LOCATIONS_FILE, data);
+async function setClientLocations(data: Record<string, ClientLocation>) {
+  await saveData(CLIENT_LOCATIONS_FILE, data);
 }
 
 function getClientInvoices() {
   return loadData<Record<string, ClientInvoice>>(CLIENT_INVOICES_FILE, {});
 }
 
-function setClientInvoices(data: Record<string, ClientInvoice>) {
-  saveData(CLIENT_INVOICES_FILE, data);
+async function setClientInvoices(data: Record<string, ClientInvoice>) {
+  await saveData(CLIENT_INVOICES_FILE, data);
 }
+
+function getWorkspaces() { return loadData<Record<string, WorkspaceRecord>>(WORKSPACES_FILE, {}); }
+async function setWorkspaces(data: Record<string, WorkspaceRecord>) { await saveData(WORKSPACES_FILE, data); }
+
+function getWorkspaceMembers() { return loadData<Record<string, WorkspaceMemberRecord>>(WORKSPACE_MEMBERS_FILE, {}); }
+async function setWorkspaceMembers(data: Record<string, WorkspaceMemberRecord>) { await saveData(WORKSPACE_MEMBERS_FILE, data); }
+
+function getTeams() { return loadData<Record<string, TeamRecord>>(TEAMS_FILE, {}); }
+async function setTeams(data: Record<string, TeamRecord>) { await saveData(TEAMS_FILE, data); }
 
 function getCounters() { return loadData<Record<string, number>>(COUNTERS_FILE, {
   userId: 1,
@@ -523,14 +676,19 @@ function getCounters() { return loadData<Record<string, number>>(COUNTERS_FILE, 
   portfolioMessageId: 1,
   teamMessageId: 1,
   clientId: 1,
-  invitationId: 1
+  invitationId: 1,
+  workspaceId: 1,
+  workspaceMemberId: 1,
+  teamGroupId: 1,
+  activityId: 1,
+  notificationId: 1,
+  commentId: 1
 }); }
-function setCounters(data: Record<string, number>) { saveData(COUNTERS_FILE, data); }
+async function setCounters(data: Record<string, number>) { await saveData(COUNTERS_FILE, data); }
 
 // Generate a simple ObjectId-like string
 function generateId(counterKey: string): string {
   const counters = getCounters();
-  // Initialize counter if it doesn't exist
   if (typeof counters[counterKey] !== 'number') {
     counters[counterKey] = 1;
   }
@@ -542,38 +700,40 @@ function generateId(counterKey: string): string {
 
 // User operations
 export const MockUser = {
-  findOne: async (query: { email?: string }) => {
-    console.log("MockUser.findOne query:", query);
+  findOne: async (query: { email?: string; _id?: string }) => {
     const users = getUsers();
+    if (query._id) {
+      return users[query._id] || null;
+    }
     const emailToId = getEmailToId();
-    console.log("emailToId contents:", emailToId);
     if (query.email) {
       const lowerEmail = query.email.toLowerCase();
-      console.log("MockUser.findOne: looking for email:", lowerEmail);
       const userId = emailToId[lowerEmail];
-      console.log("MockUser.findOne: userId found:", userId);
       if (userId && users[userId]) {
         return users[userId];
       }
     }
-    console.log("MockUser.findOne: no user found");
     return null;
   },
 
-  create: async (userData: { name: string; nom?: string; prenom?: string; email: string; password: string; role: string }) => {
-    console.log("MockUser.create called with data:", userData);
+  findById: async (id: string) => {
+    const users = getUsers();
+    return users[id] || null;
+  },
+
+  create: async (userData: { name: string; nom?: string; prenom?: string; email: string; password: string; role: string; activeWorkspaceId?: string }) => {
     const _id = generateId("userId");
-    console.log("MockUser.create: generated ID:", _id);
     const now = new Date();
     const user: User = {
       _id,
       name: userData.name,
-      nom: userData.nom || userData.name,
-      prenom: userData.prenom || userData.name,
+      nom: userData.nom || "",
+      prenom: userData.prenom || "",
       email: userData.email.toLowerCase(),
       password: userData.password,
       role: userData.role || "freelance",
       avatar: "",
+      activeWorkspaceId: userData.activeWorkspaceId,
       createdAt: now,
       updatedAt: now,
     };
@@ -581,9 +741,29 @@ export const MockUser = {
     const emailToId = getEmailToId();
     users[_id] = user;
     emailToId[user.email] = _id;
-    setUsers(users);
-    setEmailToId(emailToId);
-    console.log("MockUser.create: user saved! Now users count:", Object.keys(users).length);
+    await setUsers(users);
+    await setEmailToId(emailToId);
+    return user;
+  },
+
+  updateOne: async (query: { _id?: string; email?: string }, update: Record<string, any>) => {
+    const users = getUsers();
+    let user: User | null = null;
+    if (query._id) {
+      user = users[query._id] || null;
+    } else if (query.email) {
+      const emailToId = getEmailToId();
+      const uid = emailToId[query.email.toLowerCase()];
+      if (uid) user = users[uid] || null;
+    }
+    if (!user) return null;
+    const now = new Date();
+    for (const key of Object.keys(update)) {
+      (user as any)[key] = update[key];
+    }
+    user.updatedAt = now;
+    users[user._id] = user;
+    await setUsers(users);
     return user;
   },
 };
@@ -620,8 +800,8 @@ export const MockPortfolio = {
     const slugToId = getSlugToId();
     portfolios[_id] = portfolio;
     slugToId[portfolio.slug] = _id;
-    setPortfolios(portfolios);
-    setSlugToId(slugToId);
+    await setPortfolios(portfolios);
+    await setSlugToId(slugToId);
     return portfolio;
   },
 
@@ -694,7 +874,7 @@ export const MockPortfolioProject = {
     };
     const portfolioProjects = getPortfolioProjects();
     portfolioProjects[_id] = project;
-    setPortfolioProjects(portfolioProjects);
+    await setPortfolioProjects(portfolioProjects);
     return project;
   },
 
@@ -708,7 +888,7 @@ export const MockPortfolioProject = {
       tags: Array.isArray(updateData.tags) ? updateData.tags : portfolioProjects[id].tags,
       updatedAt: new Date(),
     };
-    setPortfolioProjects(portfolioProjects);
+    await setPortfolioProjects(portfolioProjects);
     return portfolioProjects[id];
   },
 
@@ -717,7 +897,7 @@ export const MockPortfolioProject = {
     if (!portfolioProjects[id]) return null;
     const deleted = portfolioProjects[id];
     delete portfolioProjects[id];
-    setPortfolioProjects(portfolioProjects);
+    await setPortfolioProjects(portfolioProjects);
     return deleted;
   },
 };
@@ -757,7 +937,7 @@ export const MockSkill = {
     };
     const skills = getSkills();
     skills[_id] = skill;
-    setSkills(skills);
+    await setSkills(skills);
     return skill;
   },
 
@@ -769,7 +949,7 @@ export const MockSkill = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setSkills(skills);
+    await setSkills(skills);
     return skills[id];
   },
 
@@ -778,7 +958,7 @@ export const MockSkill = {
     if (!skills[id]) return null;
     const deleted = skills[id];
     delete skills[id];
-    setSkills(skills);
+    await setSkills(skills);
     return deleted;
   },
 };
@@ -821,7 +1001,7 @@ export const MockExperience = {
     };
     const experiences = getExperiences();
     experiences[_id] = experience;
-    setExperiences(experiences);
+    await setExperiences(experiences);
     return experience;
   },
 
@@ -833,7 +1013,7 @@ export const MockExperience = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setExperiences(experiences);
+    await setExperiences(experiences);
     return experiences[id];
   },
 
@@ -842,7 +1022,7 @@ export const MockExperience = {
     if (!experiences[id]) return null;
     const deleted = experiences[id];
     delete experiences[id];
-    setExperiences(experiences);
+    await setExperiences(experiences);
     return deleted;
   },
 };
@@ -883,7 +1063,7 @@ export const MockMessage = {
     };
     const messages = getPortfolioMessages();
     messages[_id] = message;
-    setPortfolioMessages(messages);
+    await setPortfolioMessages(messages);
     return message;
   },
 
@@ -895,7 +1075,7 @@ export const MockMessage = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setPortfolioMessages(messages);
+    await setPortfolioMessages(messages);
     return messages[id];
   },
 
@@ -904,7 +1084,7 @@ export const MockMessage = {
     if (!messages[id]) return null;
     const deleted = messages[id];
     delete messages[id];
-    setPortfolioMessages(messages);
+    await setPortfolioMessages(messages);
     return deleted;
   },
 };
@@ -978,7 +1158,7 @@ export const MockTeamMessage = {
     
     const messages = getTeamMessages();
     messages[_id] = message;
-    setTeamMessages(messages);
+    await setTeamMessages(messages);
 
     // Populate and return
     const users = getTeam();
@@ -1007,7 +1187,7 @@ export const MockTeamMessage = {
         messages[id].updatedAt = new Date();
       }
     }
-    setTeamMessages(messages);
+    await setTeamMessages(messages);
   }
 };
 
@@ -1049,17 +1229,17 @@ export const MockTestimonial = {
     };
     const testimonials = getTestimonials();
     testimonials[_id] = t;
-    setTestimonials(testimonials);
+    await setTestimonials(testimonials);
     return t;
   },
 };
 
 // Client operations
 export const MockClient = {
-  find: async (userId?: string) => {
+  find: async (workspaceId?: string) => {
     const clients = getClients();
     const all = Object.values(clients);
-    const filtered = userId ? all.filter(c => !c.userId || c.userId === userId) : all;
+    const filtered = workspaceId ? all.filter(c => !c.workspaceId || c.workspaceId === workspaceId) : all;
     return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
@@ -1075,7 +1255,8 @@ export const MockClient = {
     telephone?: string;
     adresse?: string;
     secteurActivite?: string;
-    userId: string;
+    budget?: number;
+    workspaceId: string;
   }) => {
     const _id = generateId("clientId");
     const now = new Date();
@@ -1087,14 +1268,15 @@ export const MockClient = {
       telephone: clientData.telephone || "",
       adresse: clientData.adresse || "",
       secteurActivite: clientData.secteurActivite || "",
+      budget: clientData.budget,
       dateCreation: now,
-      userId: clientData.userId,
+      workspaceId: clientData.workspaceId,
       createdAt: now,
       updatedAt: now,
     };
     const clients = getClients();
     clients[_id] = client;
-    setClients(clients);
+    await setClients(clients);
     return client;
   },
 
@@ -1106,7 +1288,7 @@ export const MockClient = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClients(clients);
+    await setClients(clients);
     return clients[id];
   },
 
@@ -1115,18 +1297,18 @@ export const MockClient = {
     if (!clients[id]) return null;
     const deleted = clients[id];
     delete clients[id];
-    setClients(clients);
+    await setClients(clients);
     return deleted;
   },
 };
 
 // Agency Project operations
 export const MockProject = {
-  find: async (userId?: string) => {
+  find: async (workspaceId?: string) => {
     const agencyProjects = getAgencyProjects();
     const clients = getClients();
     const all = Object.values(agencyProjects);
-    const filtered = userId ? all.filter(p => !p.userId || p.userId === userId) : all;
+    const filtered = workspaceId ? all.filter(p => !p.workspaceId || p.workspaceId === workspaceId) : all;
     const sorted = filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return sorted.map(p => ({
       ...p,
@@ -1154,7 +1336,7 @@ export const MockProject = {
     priorite: string;
     clientId: string;
     chefProjet?: string;
-    userId: string;
+    workspaceId: string;
   }) => {
     const _id = generateId("agencyProjectId");
     const now = new Date();
@@ -1169,14 +1351,14 @@ export const MockProject = {
       priorite: projectData.priorite,
       clientId: projectData.clientId,
       chefProjet: projectData.chefProjet,
-      userId: projectData.userId,
+      workspaceId: projectData.workspaceId,
       createdAt: now,
       updatedAt: now,
     };
     const agencyProjects = getAgencyProjects();
     const clients = getClients();
     agencyProjects[_id] = project;
-    setAgencyProjects(agencyProjects);
+    await setAgencyProjects(agencyProjects);
     return {
       ...project,
       clientId: clients[project.clientId] || null,
@@ -1192,7 +1374,7 @@ export const MockProject = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setAgencyProjects(agencyProjects);
+    await setAgencyProjects(agencyProjects);
     return {
       ...agencyProjects[id],
       clientId: clients[agencyProjects[id].clientId] || null,
@@ -1204,14 +1386,29 @@ export const MockProject = {
     if (!agencyProjects[id]) return null;
     const deleted = agencyProjects[id];
     delete agencyProjects[id];
-    setAgencyProjects(agencyProjects);
+    await setAgencyProjects(agencyProjects);
     return deleted;
+  },
+
+  countByClient: async (workspaceId: string) => {
+    const agencyProjects = getAgencyProjects();
+    const all = Object.values(agencyProjects);
+    const filtered = workspaceId ? all.filter((p: any) => !p.workspaceId || p.workspaceId === workspaceId) : all;
+    const stats: Record<string, { count: number; totalBudget: number }> = {};
+    for (const p of filtered) {
+      const cid = (p as any).clientId;
+      if (!cid) continue;
+      if (!stats[cid]) stats[cid] = { count: 0, totalBudget: 0 };
+      stats[cid].count++;
+      stats[cid].totalBudget += (p as any).budget || 0;
+    }
+    return stats;
   },
 };
 
 // Task operations
 export const MockTask = {
-  find: async (filter: { projetId?: string, userId?: string } = {}) => {
+  find: async (filter: { projetId?: string, workspaceId?: string } = {}) => {
     const tasks = getTasks();
     const agencyProjects = getAgencyProjects();
     const team = getTeam();
@@ -1219,8 +1416,8 @@ export const MockTask = {
     if (filter.projetId) {
       allTasks = allTasks.filter(t => t.projetId === filter.projetId);
     }
-    if (filter.userId) {
-      allTasks = allTasks.filter(t => !t.userId || t.userId === filter.userId);
+    if (filter.workspaceId) {
+      allTasks = allTasks.filter(t => !t.workspaceId || t.workspaceId === filter.workspaceId);
     }
     return allTasks.map(t => ({
       ...t,
@@ -1250,7 +1447,7 @@ export const MockTask = {
     dateFin?: string;
     projetId: string;
     employeId?: string;
-    userId: string;
+    workspaceId: string;
   }) => {
     const _id = generateId("taskId");
     const now = new Date();
@@ -1264,7 +1461,7 @@ export const MockTask = {
       dateFin: taskData.dateFin,
       projetId: taskData.projetId,
       employeId: taskData.employeId,
-      userId: taskData.userId,
+      workspaceId: taskData.workspaceId,
       createdAt: now,
       updatedAt: now,
     };
@@ -1272,7 +1469,7 @@ export const MockTask = {
     const agencyProjects = getAgencyProjects();
     const team = getTeam();
     tasks[_id] = task;
-    setTasks(tasks);
+    await setTasks(tasks);
     return {
       ...task,
       projetId: agencyProjects[task.projetId] ? { _id: agencyProjects[task.projetId]._id, titre: agencyProjects[task.projetId].titre } : null,
@@ -1290,7 +1487,7 @@ export const MockTask = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setTasks(tasks);
+    await setTasks(tasks);
     return {
       ...tasks[id],
       projetId: agencyProjects[tasks[id].projetId] ? { _id: agencyProjects[tasks[id].projetId]._id, titre: agencyProjects[tasks[id].projetId].titre } : null,
@@ -1303,18 +1500,23 @@ export const MockTask = {
     if (!tasks[id]) return null;
     const deleted = tasks[id];
     delete tasks[id];
-    setTasks(tasks);
+    await setTasks(tasks);
     return deleted;
   },
 };
 
 // Team operations
 export const MockTeam = {
-  find: async (userId?: string) => {
+  find: async (filter?: { userId?: string; workspaceId?: string }) => {
     const team = getTeam();
-    const all = Object.values(team);
-    const filtered = userId ? all.filter(t => !t.userId || t.userId === userId) : all;
-    return filtered.map(t => ({
+    let all = Object.values(team);
+    if (filter?.userId) {
+      all = all.filter(t => !t.userId || t.userId === filter.userId);
+    }
+    if (filter?.workspaceId) {
+      all = all.filter(t => t.workspaceId === filter.workspaceId);
+    }
+    return all.map(t => ({
       ...t,
       photo: t.avatar || undefined,
     })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -1341,6 +1543,7 @@ export const MockTeam = {
     photo?: string;
     dateEmbauche?: string;
     userId?: string;
+    workspaceId?: string;
   }) => {
     const _id = generateId("teamId");
     const now = new Date();
@@ -1355,12 +1558,13 @@ export const MockTeam = {
       avatar: teamData.avatar || teamData.photo,
       dateEmbauche: teamData.dateEmbauche,
       userId: teamData.userId,
+      workspaceId: teamData.workspaceId,
       createdAt: now,
       updatedAt: now,
     };
     const team = getTeam();
     team[_id] = teamUser;
-    setTeam(team);
+    await setTeam(team);
     return {
       ...teamUser,
       photo: teamUser.avatar,
@@ -1380,7 +1584,7 @@ export const MockTeam = {
       ...update,
       updatedAt: new Date(),
     };
-    setTeam(team);
+    await setTeam(team);
     return {
       ...team[id],
       photo: team[id].avatar,
@@ -1392,19 +1596,19 @@ export const MockTeam = {
     if (!team[id]) return null;
     const deleted = team[id];
     delete team[id];
-    setTeam(team);
+    await setTeam(team);
     return deleted;
   },
 };
 
 // Document operations
 export const MockDocument = {
-  find: async (userId?: string) => {
+  find: async (workspaceId?: string) => {
     const documents = getDocuments();
     const agencyProjects = getAgencyProjects();
     const team = getTeam();
     const all = Object.values(documents);
-    const filtered = userId ? all.filter(d => !d.userId || d.userId === userId) : all;
+    const filtered = workspaceId ? all.filter(d => !d.workspaceId || d.workspaceId === workspaceId) : all;
     return filtered.map(doc => ({
       ...doc,
       projectId: agencyProjects[doc.projectId] ? { _id: agencyProjects[doc.projectId]._id, titre: agencyProjects[doc.projectId].titre } : null,
@@ -1431,7 +1635,7 @@ export const MockDocument = {
     url: string;
     projectId: string;
     uploadedBy: string;
-    userId: string;
+    workspaceId: string;
   }) => {
     const _id = generateId("documentId");
     const now = new Date();
@@ -1444,7 +1648,7 @@ export const MockDocument = {
       dateUpload: new Date().toISOString().split('T')[0],
       projectId: docData.projectId,
       uploadedBy: docData.uploadedBy,
-      userId: docData.userId,
+      workspaceId: docData.workspaceId,
       createdAt: now,
       updatedAt: now,
     };
@@ -1452,7 +1656,7 @@ export const MockDocument = {
     const agencyProjects = getAgencyProjects();
     const team = getTeam();
     documents[_id] = document;
-    setDocuments(documents);
+    await setDocuments(documents);
     return {
       ...document,
       projectId: agencyProjects[document.projectId] ? { _id: agencyProjects[document.projectId]._id, titre: agencyProjects[document.projectId].titre } : null,
@@ -1465,7 +1669,7 @@ export const MockDocument = {
     if (!documents[id]) return null;
     const deleted = documents[id];
     delete documents[id];
-    setDocuments(documents);
+    await setDocuments(documents);
     return deleted;
   },
 };
@@ -1491,6 +1695,8 @@ export const MockClientActivity = {
   create: async (data: {
     clientId: string;
     userId: string;
+    userName: string;
+    userEmail: string;
     action: string;
     description: string;
   }) => {
@@ -1500,6 +1706,8 @@ export const MockClientActivity = {
       _id,
       clientId: data.clientId,
       userId: data.userId,
+      userName: data.userName,
+      userEmail: data.userEmail,
       action: data.action,
       description: data.description,
       createdAt: now,
@@ -1507,7 +1715,7 @@ export const MockClientActivity = {
     };
     const items = getClientActivities();
     items[_id] = item;
-    setClientActivities(items);
+    await setClientActivities(items);
     return item;
   },
 
@@ -1519,7 +1727,7 @@ export const MockClientActivity = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientActivities(items);
+    await setClientActivities(items);
     return items[id];
   },
 
@@ -1528,7 +1736,57 @@ export const MockClientActivity = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientActivities(items);
+    await setClientActivities(items);
+    return deleted;
+  },
+};
+
+// Project Activity operations
+export const MockProjectActivity = {
+  find: async (query: { projectId?: string }) => {
+    const items = getProjectActivities();
+    const results: ProjectActivity[] = [];
+    for (const item of Object.values(items)) {
+      if (!query.projectId || item.projectId === query.projectId) {
+        results.push(item);
+      }
+    }
+    return results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  create: async (data: {
+    projectId: string;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    action: string;
+    description: string;
+  }) => {
+    const _id = generateId("projectActivityId");
+    const now = new Date();
+    const item: ProjectActivity = {
+      _id,
+      projectId: data.projectId,
+      userId: data.userId,
+      userName: data.userName,
+      userEmail: data.userEmail,
+      action: data.action,
+      description: data.description,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const items = getProjectActivities();
+    items[_id] = item;
+    await setProjectActivities(items);
+    return item;
+  },
+
+  findByIdAndDelete: async (id: string) => {
+    const items = getProjectActivities();
+    if (!items[id]) return null;
+    const deleted = items[id];
+    delete items[id];
+    await setProjectActivities(items);
     return deleted;
   },
 };
@@ -1554,7 +1812,10 @@ export const MockClientComment = {
   create: async (data: {
     clientId: string;
     userId: string;
+    userName: string;
+    userEmail: string;
     comment: string;
+    workspaceId: string;
   }) => {
     const _id = generateId("clientCommentId");
     const now = new Date();
@@ -1562,13 +1823,16 @@ export const MockClientComment = {
       _id,
       clientId: data.clientId,
       userId: data.userId,
+      userName: data.userName,
+      userEmail: data.userEmail,
       comment: data.comment,
+      workspaceId: data.workspaceId,
       createdAt: now,
       updatedAt: now,
     };
     const items = getClientComments();
     items[_id] = item;
-    setClientComments(items);
+    await setClientComments(items);
     return item;
   },
 
@@ -1580,7 +1844,7 @@ export const MockClientComment = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientComments(items);
+    await setClientComments(items);
     return items[id];
   },
 
@@ -1589,7 +1853,7 @@ export const MockClientComment = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientComments(items);
+    await setClientComments(items);
     return deleted;
   },
 };
@@ -1619,6 +1883,8 @@ export const MockClientDocument = {
     fileUrl: string;
     fileSize: number;
     uploadedBy: string;
+    uploadedByName: string;
+    uploadedByEmail: string;
   }) => {
     const _id = generateId("clientDocumentId");
     const now = new Date();
@@ -1630,12 +1896,14 @@ export const MockClientDocument = {
       fileUrl: data.fileUrl,
       fileSize: data.fileSize,
       uploadedBy: data.uploadedBy,
+      uploadedByName: data.uploadedByName,
+      uploadedByEmail: data.uploadedByEmail,
       createdAt: now,
       updatedAt: now,
     };
     const items = getClientDocuments();
     items[_id] = item;
-    setClientDocuments(items);
+    await setClientDocuments(items);
     return item;
   },
 
@@ -1647,7 +1915,7 @@ export const MockClientDocument = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientDocuments(items);
+    await setClientDocuments(items);
     return items[id];
   },
 
@@ -1656,7 +1924,7 @@ export const MockClientDocument = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientDocuments(items);
+    await setClientDocuments(items);
     return deleted;
   },
 };
@@ -1686,6 +1954,9 @@ export const MockClientReminder = {
     reminderDate: string;
     priority: string;
     status: string;
+    createdBy?: string;
+    createdByName?: string;
+    createdByEmail?: string;
   }) => {
     const _id = generateId("clientReminderId");
     const now = new Date();
@@ -1697,12 +1968,15 @@ export const MockClientReminder = {
       reminderDate: data.reminderDate,
       priority: data.priority,
       status: data.status,
+      createdBy: data.createdBy,
+      createdByName: data.createdByName,
+      createdByEmail: data.createdByEmail,
       createdAt: now,
       updatedAt: now,
     };
     const items = getClientReminders();
     items[_id] = item;
-    setClientReminders(items);
+    await setClientReminders(items);
     return item;
   },
 
@@ -1714,7 +1988,7 @@ export const MockClientReminder = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientReminders(items);
+    await setClientReminders(items);
     return items[id];
   },
 
@@ -1723,7 +1997,7 @@ export const MockClientReminder = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientReminders(items);
+    await setClientReminders(items);
     return deleted;
   },
 };
@@ -1755,6 +2029,9 @@ export const MockClientEmail = {
     status: string;
     attachmentUrl?: string;
     attachmentName?: string;
+    sentBy?: string;
+    sentByName?: string;
+    sentByEmail?: string;
   }) => {
     const _id = generateId("clientEmailId");
     const now = new Date();
@@ -1768,12 +2045,15 @@ export const MockClientEmail = {
       status: data.status,
       attachmentUrl: data.attachmentUrl,
       attachmentName: data.attachmentName,
+      sentBy: data.sentBy || "",
+      sentByName: data.sentByName || "",
+      sentByEmail: data.sentByEmail || "",
       createdAt: now,
       updatedAt: now,
     };
     const items = getClientEmails();
     items[_id] = item;
-    setClientEmails(items);
+    await setClientEmails(items);
     return item;
   },
 
@@ -1785,7 +2065,7 @@ export const MockClientEmail = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientEmails(items);
+    await setClientEmails(items);
     return items[id];
   },
 
@@ -1794,7 +2074,7 @@ export const MockClientEmail = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientEmails(items);
+    await setClientEmails(items);
     return deleted;
   },
 };
@@ -1832,7 +2112,7 @@ export const MockClientTag = {
     };
     const items = getClientTags();
     items[_id] = item;
-    setClientTags(items);
+    await setClientTags(items);
     return item;
   },
 
@@ -1844,7 +2124,7 @@ export const MockClientTag = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientTags(items);
+    await setClientTags(items);
     return items[id];
   },
 
@@ -1853,7 +2133,7 @@ export const MockClientTag = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientTags(items);
+    await setClientTags(items);
     return deleted;
   },
 };
@@ -1893,7 +2173,7 @@ export const MockClientLocation = {
     };
     const items = getClientLocations();
     items[_id] = item;
-    setClientLocations(items);
+    await setClientLocations(items);
     return item;
   },
 
@@ -1905,7 +2185,7 @@ export const MockClientLocation = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientLocations(items);
+    await setClientLocations(items);
     return items[id];
   },
 
@@ -1914,7 +2194,7 @@ export const MockClientLocation = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientLocations(items);
+    await setClientLocations(items);
     return deleted;
   },
 };
@@ -1960,7 +2240,7 @@ export const MockClientInvoice = {
     };
     const items = getClientInvoices();
     items[_id] = item;
-    setClientInvoices(items);
+    await setClientInvoices(items);
     return item;
   },
 
@@ -1972,7 +2252,7 @@ export const MockClientInvoice = {
       ...updateData,
       updatedAt: new Date(),
     };
-    setClientInvoices(items);
+    await setClientInvoices(items);
     return items[id];
   },
 
@@ -1981,8 +2261,68 @@ export const MockClientInvoice = {
     if (!items[id]) return null;
     const deleted = items[id];
     delete items[id];
-    setClientInvoices(items);
+    await setClientInvoices(items);
     return deleted;
+  },
+};
+
+// Workspace operations
+export const MockWorkspace = {
+  create: async (data: { nom: string; ownerId: string; description?: string; logo?: string; _id?: string }) => {
+    const _id = data._id || generateId("workspaceId");
+    const now = new Date().toISOString();
+    const ws: WorkspaceRecord = {
+      _id, nom: data.nom, ownerId: data.ownerId,
+      description: data.description || "", logo: data.logo || "",
+      createdAt: now, updatedAt: now,
+    };
+    const workspaces = getWorkspaces();
+    workspaces[_id] = ws;
+    await setWorkspaces(workspaces);
+    return ws;
+  },
+  findOne: async (query: { _id?: string }) => {
+    const workspaces = getWorkspaces();
+    if (query._id) return workspaces[query._id] || null;
+    return null;
+  },
+  findByOwner: async (ownerId: string) => {
+    const workspaces = getWorkspaces();
+    return Object.values(workspaces).filter((w: any) => w.ownerId === ownerId);
+  },
+};
+
+// Workspace Member operations
+export const MockWorkspaceMember = {
+  create: async (data: { workspaceId: string; userId: string; role: string; equipe?: string; status?: string }) => {
+    const _id = generateId("workspaceMemberId");
+    const now = new Date().toISOString();
+    const member: WorkspaceMemberRecord = {
+      _id, workspaceId: data.workspaceId, userId: data.userId,
+      role: data.role, equipe: data.equipe || "", status: data.status || "Actif",
+      createdAt: now, updatedAt: now,
+    };
+    const members = getWorkspaceMembers();
+    members[_id] = member;
+    await setWorkspaceMembers(members);
+    return member;
+  },
+  find: async (query: { workspaceId?: string; userId?: string }) => {
+    const members = getWorkspaceMembers();
+    return Object.values(members).filter((m: any) => {
+      if (query.workspaceId && m.workspaceId !== query.workspaceId) return false;
+      if (query.userId && m.userId !== query.userId) return false;
+      return true;
+    });
+  },
+  findOne: async (query: { workspaceId?: string; userId?: string }) => {
+    const members = getWorkspaceMembers();
+    for (const m of Object.values(members)) {
+      if (query.workspaceId && m.workspaceId !== query.workspaceId) continue;
+      if (query.userId && m.userId !== query.userId) continue;
+      return m;
+    }
+    return null;
   },
 };
 
@@ -2041,97 +2381,169 @@ function findAdminUserId(): string | null {
   return admin?._id || null;
 }
 
-// Initialize with a test user (optional)
+// Initialize with a test user (optional) - synchronous, called at module level
 async function initMockDB() {
-  const testPassword = await hash("password123", 10);
+  const testPassword = hashSync("password123", 10);
+  const users = getUsers();
+  const emailToId = getEmailToId();
+  const existingUserEntry = Object.values(users).find((u: any) => u.email === "test@example.com");
   
-  // Create test users
-  await createUserAndTeamMember("User", "Test", "test@example.com", "Admin", testPassword, "22000000");
-  await createUserAndTeamMember("Doe", "John", "john.doe@example.com", "Développeur", testPassword, "22123456");
-  await createUserAndTeamMember("Smith", "Jane", "jane.smith@example.com", "Designer", testPassword, "22654321");
-  await createUserAndTeamMember("hoimdi", "omayma", "omayma.hoimdi@esprit.tn", "Développeur", testPassword, "24241670");
-  
-  const testUser = await MockUser.findOne({ email: "test@example.com" });
-  if (testUser) {
-    let portfolio = await MockPortfolio.findOne({ userId: testUser._id });
-    if (!portfolio) {
-      await MockPortfolio.create({
-        userId: testUser._id,
-        title: "Portfolio de Test User",
-        slug: "test-user",
-        bio: "",
-        theme: "light",
-        primaryColor: "#6366f1",
-        isPublished: false,
-        views: 0,
-      });
+  let testUserId: string | null = null;
+  if (!existingUserEntry) {
+    testUserId = "mock-user-init-001";
+    const now = new Date().toISOString();
+    users[testUserId] = {
+      _id: testUserId, name: "Test User", nom: "User", prenom: "Test",
+      email: "test@example.com", password: testPassword, role: "freelance",
+      avatar: "", createdAt: now, updatedAt: now,
+    } as any;
+    emailToId["test@example.com"] = testUserId;
+    await setUsers(users);
+    await setEmailToId(emailToId);
+  } else {
+    testUserId = existingUserEntry._id;
+  }
+
+  if (testUserId) {
+    // Portfolio
+    const portfolios = getPortfolios();
+    const hasPortfolio = Object.values(portfolios).some((p: any) => p.userId === testUserId);
+    if (!hasPortfolio) {
+      const pid = "mock-portfolio-init-001";
+      portfolios[pid] = { _id: pid, userId: testUserId, title: "Portfolio de Test User", slug: "test-user", bio: "", theme: "light", primaryColor: "#6366f1", isPublished: false, views: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as any;
+      await setPortfolios(portfolios);
+    }
+
+    // Workspace
+    const workspaces = getWorkspaces();
+    const existingWs = Object.values(workspaces).find((w: any) => w.ownerId === testUserId);
+    let wsId: string | null = null;
+
+    if (!existingWs) {
+      wsId = "mock-ws-init-001";
+      const now = new Date().toISOString();
+      workspaces[wsId] = { _id: wsId, nom: "Agence AgencyFlow", ownerId: testUserId, description: "Espace de travail principal", logo: "", createdAt: now, updatedAt: now } as any;
+      await setWorkspaces(workspaces);
+
+      const members = getWorkspaceMembers();
+      const memId = "mock-wsm-init-001";
+      members[memId] = { _id: memId, workspaceId: wsId, userId: testUserId, role: "Owner", equipe: "", status: "Actif", createdAt: now, updatedAt: now } as any;
+      await setWorkspaceMembers(members);
+    } else {
+      wsId = existingWs._id;
+    }
+
+    // Seed demo data if workspace exists and has no clients
+    if (wsId) {
+      const existingClients = getClients();
+      const hasClients = Object.values(existingClients).some((c: any) => c.workspaceId === wsId);
+      if (!hasClients) {
+        const now = new Date().toISOString();
+        const c1 = { _id: "mock-client-seed-001", nomSociete: "TechCorp France", responsable: "Jean Dupont", email: "jean.dupont@techcorp.fr", telephone: "01 23 45 67 89", adresse: "12 Rue de la Paix, 75002 Paris", secteurActivite: "Informatique", dateCreation: now, workspaceId: wsId, createdAt: now, updatedAt: now };
+        const c2 = { _id: "mock-client-seed-002", nomSociete: "Design Studio", responsable: "Marie Laurent", email: "marie@designstudio.fr", telephone: "01 98 76 54 32", adresse: "5 Avenue des Arts, 75008 Paris", secteurActivite: "Education", dateCreation: now, workspaceId: wsId, createdAt: now, updatedAt: now };
+        const c3 = { _id: "mock-client-seed-003", nomSociete: "ABC Consulting", responsable: "Pierre Martin", email: "pierre@abcconsulting.fr", telephone: "04 56 78 90 12", adresse: "8 Boulevard Haussmann, 75009 Paris", secteurActivite: "Finance", dateCreation: now, workspaceId: wsId, createdAt: now, updatedAt: now };
+        existingClients[c1._id] = c1 as any;
+        existingClients[c2._id] = c2 as any;
+        existingClients[c3._id] = c3 as any;
+        await setClients(existingClients);
+
+        const projects = getAgencyProjects();
+        const dateDebut = new Date();
+        const dateFin = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+        projects["mock-proj-seed-001"] = { _id: "mock-proj-seed-001", titre: "Site E-commerce TechCorp", description: "Refonte complète du site e-commerce avec catalogue produits et paiement en ligne.", budget: 25000, dateDebut, dateFin, statut: "En cours", priorite: "Haute", clientId: c1._id, chefProjet: "Test User", workspaceId: wsId, createdAt: now, updatedAt: now } as any;
+        projects["mock-proj-seed-002"] = { _id: "mock-proj-seed-002", titre: "Identité visuelle Design Studio", description: "Création du logo, charte graphique et supports de communication.", budget: 8000, dateDebut, dateFin, statut: "Terminé", priorite: "Moyenne", clientId: c2._id, chefProjet: "Test User", workspaceId: wsId, createdAt: now, updatedAt: now } as any;
+        projects["mock-proj-seed-003"] = { _id: "mock-proj-seed-003", titre: "Application Mobile ABC", description: "Développement d'une application mobile iOS/Android de gestion de projets.", budget: 45000, dateDebut, dateFin, statut: "En attente", priorite: "Haute", clientId: c3._id, chefProjet: "Test User", workspaceId: wsId, createdAt: now, updatedAt: now } as any;
+        await setAgencyProjects(projects);
+      }
+
+      // Team entry
+      const team = getTeam();
+      const hasTeamEntry = Object.values(team).some((t: any) => t.email === "test@example.com");
+      if (!hasTeamEntry) {
+        team["mock-team-init-001"] = { _id: "mock-team-init-001", nom: "User", prenom: "Test", email: "test@example.com", password: testPassword, role: "Admin", telephone: "", avatar: "", userId: testUserId, workspaceId: wsId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as any;
+        await setTeam(team);
+      }
     }
   }
-  
-  // Migration: assign existing orphan data to the first admin user
-  await migrateOrphanData();
 }
 
 async function migrateOrphanData() {
   const adminId = findAdminUserId();
   if (!adminId) return;
   
+  // Get or create workspace for admin
+  let workspaces = getWorkspaces();
+  const adminWorkspace = Object.values(workspaces).find((w: any) => w.ownerId === adminId);
+  let workspaceId: string;
+  if (!adminWorkspace) {
+    const now = new Date().toISOString();
+    workspaceId = generateId("workspaceId");
+    workspaces[workspaceId] = {
+      _id: workspaceId, nom: "Agence AgencyFlow", ownerId: adminId,
+      description: "", logo: "",
+      createdAt: now, updatedAt: now,
+    };
+    await setWorkspaces(workspaces);
+  } else {
+    workspaceId = adminWorkspace._id;
+  }
+  
   // Migrate clients
   const clients = getClients();
   let clientsChanged = false;
   for (const c of Object.values(clients)) {
-    if (!(c as any).userId) {
-      (c as any).userId = adminId;
+    if (!(c as any).workspaceId) {
+      (c as any).workspaceId = workspaceId;
       clientsChanged = true;
     }
   }
-  if (clientsChanged) setClients(clients);
+  if (clientsChanged) await setClients(clients);
   
   // Migrate projects
   const projects = getAgencyProjects();
   let projectsChanged = false;
   for (const p of Object.values(projects)) {
-    if (!(p as any).userId) {
-      (p as any).userId = adminId;
+    if (!(p as any).workspaceId) {
+      (p as any).workspaceId = workspaceId;
       projectsChanged = true;
     }
   }
-  if (projectsChanged) setAgencyProjects(projects);
+  if (projectsChanged) await setAgencyProjects(projects);
   
   // Migrate tasks
   const tasks = getTasks();
   let tasksChanged = false;
   for (const t of Object.values(tasks)) {
-    if (!(t as any).userId) {
-      (t as any).userId = adminId;
+    if (!(t as any).workspaceId) {
+      (t as any).workspaceId = workspaceId;
       tasksChanged = true;
     }
   }
-  if (tasksChanged) setTasks(tasks);
+  if (tasksChanged) await setTasks(tasks);
   
   // Migrate documents
   const documents = getDocuments();
   let docsChanged = false;
   for (const d of Object.values(documents)) {
-    if (!(d as any).userId) {
-      (d as any).userId = adminId;
+    if (!(d as any).workspaceId) {
+      (d as any).workspaceId = workspaceId;
       docsChanged = true;
     }
   }
-  if (docsChanged) setDocuments(documents);
+  if (docsChanged) await setDocuments(documents);
   
   // Migrate invitations
   const invitations = getInvitations();
   let invChanged = false;
   for (const inv of Object.values(invitations)) {
-    if (!(inv as any).userId) {
-      (inv as any).userId = adminId;
+    if (!(inv as any).workspaceId) {
+      (inv as any).workspaceId = workspaceId;
       invChanged = true;
     }
   }
-  if (invChanged) setInvitations(invitations);
+  if (invChanged) await setInvitations(invitations);
   
-  // Migrate team members (assign to admin)
+  // Migrate team members (assign to workspace)
   const allTeam = getTeam();
   let teamChanged = false;
   for (const t of Object.values(allTeam)) {
@@ -2140,11 +2552,33 @@ async function migrateOrphanData() {
       teamChanged = true;
     }
   }
-  if (teamChanged) setTeam(allTeam);
-}
+  if (teamChanged) await setTeam(allTeam);
 
-// Initialize mock DB
-initMockDB();
+  // Ensure all registered users have a team entry
+  const users = getUsers();
+  const allUsers = Object.values(users);
+  let teamCreated = false;
+  for (const u of allUsers) {
+    const hasEntry = Object.values(getTeam()).some((t: any) => t.email?.toLowerCase() === (u as any).email?.toLowerCase());
+    if (!hasEntry) {
+      const userWsList = await MockWorkspace.findByOwner((u as any)._id);
+      const userWs = userWsList.length > 0 ? userWsList[0] : null;
+      if (userWs) {
+        const nameParts = ((u as any).name || "Utilisateur").split(" ");
+        await MockTeam.create({
+          nom: nameParts.slice(1).join(" ") || "Inconnu",
+          prenom: nameParts[0] || "Utilisateur",
+          email: (u as any).email?.toLowerCase() || "",
+          password: (u as any).password || "",
+          role: "Admin",
+          userId: (u as any)._id,
+          workspaceId: userWs._id,
+        });
+        teamCreated = true;
+      }
+    }
+  }
+}
 
 export async function getOrCreateMockUserAndPortfolio(email: string, name: string = "User") {
   let user = await MockUser.findOne({ email });
@@ -2175,31 +2609,31 @@ export async function getOrCreateMockUserAndPortfolio(email: string, name: strin
 
 // Settings operations
 function getSettings() { return loadData<any>(SETTINGS_FILE, {}); }
-function setSettings(data: any) { saveData(SETTINGS_FILE, data); }
+async function setSettings(data: any) { await saveData(SETTINGS_FILE, data); }
 
 export const MockSettings = {
-  findOne: async (query?: { userId?: string }) => {
+  findOne: async (query?: { workspaceId?: string }) => {
     const settings = getSettings();
-    if (query?.userId) {
+    if (query?.workspaceId) {
       const all = Object.values(settings);
-      const found = all.find((s: any) => s.userId === query.userId);
+      const found = all.find((s: any) => s.workspaceId === query.workspaceId);
       return found || null;
     }
     return settings && settings.nomAgence ? settings : null;
   },
   create: async (data: any) => {
-    setSettings(data);
+    await setSettings(data);
     return data;
   },
-  findOneAndUpdate: async (query: { userId?: string }, updateData: any, options?: any) => {
+  findOneAndUpdate: async (query: { workspaceId?: string }, updateData: any, options?: any) => {
     const settings = getSettings();
-    if (query?.userId) {
-      const updated = { ...settings, ...updateData, userId: query.userId };
-      setSettings(updated);
+    if (query?.workspaceId) {
+      const updated = { ...settings, ...updateData, workspaceId: query.workspaceId };
+      await setSettings(updated);
       return updated;
     }
     const updated = { ...settings, ...updateData };
-    setSettings(updated);
+    await setSettings(updated);
     return updated;
   },
 };
@@ -2218,12 +2652,13 @@ interface InvitationRecord {
   statut: "En attente" | "Acceptée" | "Expirée" | "Annulée";
   expiration: string;
   userId: string;
+  workspaceId: string;
   createdAt: string;
   updatedAt: string;
 }
 
 function getInvitations() { return loadData<Record<string, InvitationRecord>>(INVITATIONS_FILE, {}); }
-function setInvitations(data: Record<string, InvitationRecord>) { saveData(INVITATIONS_FILE, data); }
+async function setInvitations(data: Record<string, InvitationRecord>) { await saveData(INVITATIONS_FILE, data); }
 
 export const MockInvitation = {
   create: async (data: {
@@ -2236,6 +2671,7 @@ export const MockInvitation = {
     invitePar: string;
     expiration: Date;
     userId: string;
+    workspaceId: string;
   }) => {
     const _id = generateId("invitationId");
     const now = new Date().toISOString();
@@ -2251,12 +2687,13 @@ export const MockInvitation = {
       statut: "En attente",
       expiration: data.expiration.toISOString(),
       userId: data.userId,
+      workspaceId: data.workspaceId,
       createdAt: now,
       updatedAt: now,
     };
     const invitations = getInvitations();
     invitations[_id] = invitation;
-    setInvitations(invitations);
+    await setInvitations(invitations);
     return invitation;
   },
 
@@ -2273,10 +2710,447 @@ export const MockInvitation = {
     for (const inv of Object.values(invitations)) {
       if (query.token && inv.token === query.token) {
         invitations[inv._id] = { ...inv, ...updateData, updatedAt: new Date().toISOString() };
-        setInvitations(invitations);
+        await setInvitations(invitations);
         return invitations[inv._id];
       }
     }
     return null;
   },
+
+  find: async (workspaceId: string) => {
+    const invitations = getInvitations();
+    return Object.values(invitations)
+      .filter((inv: any) => inv.workspaceId === workspaceId)
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  findById: async (id: string) => {
+    const invitations = getInvitations();
+    return invitations[id] || null;
+  },
+
+  findByIdAndDelete: async (id: string) => {
+    const invitations = getInvitations();
+    if (!invitations[id]) return null;
+    const deleted = invitations[id];
+    delete invitations[id];
+    await setInvitations(invitations);
+    return deleted;
+  },
+
+  findByIdAndUpdate: async (id: string, updateData: Partial<InvitationRecord>) => {
+    const invitations = getInvitations();
+    if (!invitations[id]) return null;
+    invitations[id] = { ...invitations[id], ...updateData, updatedAt: new Date().toISOString() };
+    await setInvitations(invitations);
+    return invitations[id];
+  },
 };
+
+// --- Activity ---
+interface ActivityRecord {
+  _id: string;
+  workspaceId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  entityType: string;
+  entityId: string;
+  entityName: string;
+  action: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function getActivities() { return loadData<Record<string, ActivityRecord>>(ACTIVITIES_FILE, {}); }
+async function setActivities(data: Record<string, ActivityRecord>) { await saveData(ACTIVITIES_FILE, data); }
+
+export const MockActivity = {
+  find: async (workspaceId: string, limit = 50, skip = 0) => {
+    const items = getActivities();
+    const filtered = Object.values(items)
+      .filter((a: any) => a.workspaceId === workspaceId)
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const total = filtered.length;
+    const paged = filtered.slice(skip, skip + limit);
+    return { activities: paged, total };
+  },
+
+  create: async (data: {
+    workspaceId: string; userId: string; userName: string; userEmail: string;
+    entityType: string; entityId: string; entityName: string;
+    action: string; description: string;
+  }) => {
+    const _id = generateId("activityId");
+    const now = new Date().toISOString();
+    const record: ActivityRecord = { _id, ...data, createdAt: now, updatedAt: now };
+    const items = getActivities();
+    items[_id] = record;
+    await setActivities(items);
+    return record;
+  },
+};
+
+// --- Event ---
+export interface CalendarEventRecord {
+  _id: string;
+  workspaceId: string;
+  titre: string;
+  description?: string;
+  type: string;
+  dateDebut: string;
+  dateFin: string;
+  employeId?: string;
+  userId?: string;
+  projectId?: string;
+  statut?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function getEvents() { return loadData<Record<string, CalendarEventRecord>>(EVENTS_FILE, {}); }
+async function setEvents(data: Record<string, CalendarEventRecord>) { await saveData(EVENTS_FILE, data); }
+
+export const MockEvent = {
+  find: async (workspaceId?: string) => {
+    const items = getEvents();
+    const all = Object.values(items)
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return workspaceId ? all.filter((e: any) => e.workspaceId === workspaceId) : all;
+  },
+
+  findById: async (id: string) => {
+    const items = getEvents();
+    return items[id] || null;
+  },
+
+  create: async (data: {
+    workspaceId: string; titre: string; description?: string; type: string;
+    dateDebut: string; dateFin: string; employeId?: string; userId?: string; projectId?: string; statut?: string;
+  }) => {
+    const _id = generateId("eventId");
+    const now = new Date().toISOString();
+    const record: CalendarEventRecord = { _id, ...data, createdAt: now, updatedAt: now };
+    const items = getEvents();
+    items[_id] = record;
+    await setEvents(items);
+    return record;
+  },
+
+  findByIdAndUpdate: async (id: string, data: Partial<CalendarEventRecord>) => {
+    const items = getEvents();
+    if (!items[id]) return null;
+    items[id] = { ...items[id], ...data, updatedAt: new Date().toISOString() };
+    await setEvents(items);
+    return items[id];
+  },
+
+  findByIdAndDelete: async (id: string) => {
+    const items = getEvents();
+    if (!items[id]) return null;
+    const record = items[id];
+    delete items[id];
+    await setEvents(items);
+    return record;
+  },
+};
+
+// --- Notification ---
+interface NotificationRecord {
+  _id: string;
+  workspaceId: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  link: string;
+  read: boolean;
+  entityType: string;
+  entityId: string;
+  fromUserId: string;
+  fromUserName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function getNotifications() { return loadData<Record<string, NotificationRecord>>(NOTIFICATIONS_FILE, {}); }
+async function setNotifications(data: Record<string, NotificationRecord>) { await saveData(NOTIFICATIONS_FILE, data); }
+
+export const MockNotification = {
+  find: async (userId: string, limit = 20, skip = 0) => {
+    const items = getNotifications();
+    const filtered = Object.values(items)
+      .filter((n: any) => n.userId === userId)
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const total = filtered.length;
+    const paged = filtered.slice(skip, skip + limit);
+    return { notifications: paged, total };
+  },
+
+  create: async (data: {
+    workspaceId: string; userId: string; type: string; title: string;
+    message?: string; link?: string; entityType?: string; entityId?: string;
+    fromUserId?: string; fromUserName?: string;
+  }) => {
+    const _id = generateId("notificationId");
+    const now = new Date().toISOString();
+    const record: NotificationRecord = {
+      _id, workspaceId: data.workspaceId, userId: data.userId, type: data.type,
+      title: data.title, message: data.message || "", link: data.link || "",
+      read: false, entityType: data.entityType || "", entityId: data.entityId || "",
+      fromUserId: data.fromUserId || "", fromUserName: data.fromUserName || "",
+      createdAt: now, updatedAt: now,
+    };
+    const items = getNotifications();
+    items[_id] = record;
+    await setNotifications(items);
+    return record;
+  },
+
+  findByIdAndUpdate: async (id: string, updateData: Partial<NotificationRecord>) => {
+    const items = getNotifications();
+    if (!items[id]) return null;
+    items[id] = { ...items[id], ...updateData, updatedAt: new Date().toISOString() };
+    await setNotifications(items);
+    return items[id];
+  },
+
+  updateMany: async (query: { userId: string; read?: boolean }, updateData: Partial<NotificationRecord>) => {
+    const items = getNotifications();
+    for (const n of Object.values(items)) {
+      if (n.userId === query.userId) {
+        items[n._id] = { ...items[n._id], ...updateData, updatedAt: new Date().toISOString() };
+      }
+    }
+    await setNotifications(items);
+  },
+
+  countUnread: async (userId: string) => {
+    const items = getNotifications();
+    return Object.values(items).filter((n: any) => n.userId === userId && !n.read).length;
+  },
+};
+
+// --- Discussion Message ---
+interface DiscussionMessageRecord {
+  _id: string;
+  channelId: string;
+  projectId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatar: string;
+  content: string;
+  time: string;
+  reactions: { emoji: string; users: string[] }[];
+  pinned: boolean;
+  edited: boolean;
+  parentId?: string;
+  attachments?: { type: "image" | "file" | "voice"; name: string; data: string; size?: number }[];
+  mentions?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function getDiscussionMessages() { return loadData<Record<string, DiscussionMessageRecord>>(DISCUSSION_MESSAGES_FILE, {}); }
+async function setDiscussionMessages(data: Record<string, DiscussionMessageRecord>) { await saveData(DISCUSSION_MESSAGES_FILE, data); }
+
+export const MockDiscussion = {
+  findByChannel: async (projectId: string, channelId: string) => {
+    const items = getDiscussionMessages();
+    return Object.values(items)
+      .filter((m: any) => m.projectId === projectId && m.channelId === channelId)
+      .sort((a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  },
+
+  create: async (data: {
+    channelId: string; projectId: string; userId: string;
+    userName: string; userEmail: string; userAvatar: string;
+    content: string; parentId?: string; attachments?: any[]; mentions?: string[];
+  }) => {
+    const _id = generateId("discussionMessageId");
+    const now = new Date().toISOString();
+    const record: DiscussionMessageRecord = {
+      _id, channelId: data.channelId, projectId: data.projectId,
+      userId: data.userId, userName: data.userName, userEmail: data.userEmail,
+      userAvatar: data.userAvatar, content: data.content,
+      time: now, reactions: [], pinned: false, edited: false,
+      parentId: data.parentId, attachments: data.attachments, mentions: data.mentions || [],
+      createdAt: now, updatedAt: now,
+    };
+    const items = getDiscussionMessages();
+    items[_id] = record;
+    await setDiscussionMessages(items);
+    return record;
+  },
+
+  update: async (id: string, update: Partial<DiscussionMessageRecord>) => {
+    const items = getDiscussionMessages();
+    if (!items[id]) return null;
+    items[id] = { ...items[id], ...update, updatedAt: new Date().toISOString() };
+    await setDiscussionMessages(items);
+    return items[id];
+  },
+
+  deleteById: async (id: string) => {
+    const items = getDiscussionMessages();
+    if (!items[id]) return null;
+    const deleted = items[id];
+    delete items[id];
+    await setDiscussionMessages(items);
+    return deleted;
+  },
+};
+
+// --- Role ---
+interface RoleRecord {
+  _id: string;
+  workspaceId: string;
+  nom: string;
+  description: string;
+  type: "Système" | "Personnalisé";
+  creePar: string;
+  creeParEmail: string;
+  permissions: Record<string, { voir: boolean; creer: boolean; modifier: boolean; supprimer: boolean; gerer: boolean }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function getRoles() { return loadData<Record<string, RoleRecord>>(ROLES_FILE, {}); }
+async function setRoles(data: Record<string, RoleRecord>) { await saveData(ROLES_FILE, data); }
+
+export const MockRole = {
+  findByWorkspace: async (workspaceId: string) => {
+    const items = getRoles();
+    return Object.values(items)
+      .filter((r: any) => r.workspaceId === workspaceId)
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  findById: async (id: string) => {
+    const items = getRoles();
+    return items[id] || null;
+  },
+
+  create: async (data: {
+    workspaceId: string; nom: string; description: string; type: "Système" | "Personnalisé";
+    creePar: string; creeParEmail: string;
+    permissions: Record<string, { voir: boolean; creer: boolean; modifier: boolean; supprimer: boolean; gerer: boolean }>;
+  }) => {
+    const _id = generateId("roleId");
+    const now = new Date().toISOString();
+    const record: RoleRecord = {
+      _id, workspaceId: data.workspaceId, nom: data.nom, description: data.description,
+      type: data.type, creePar: data.creePar, creeParEmail: data.creeParEmail,
+      permissions: data.permissions, createdAt: now, updatedAt: now,
+    };
+    const items = getRoles();
+    items[_id] = record;
+    await setRoles(items);
+    return record;
+  },
+
+  findByIdAndUpdate: async (id: string, updateData: Partial<RoleRecord>) => {
+    const items = getRoles();
+    if (!items[id]) return null;
+    items[id] = { ...items[id], ...updateData, updatedAt: new Date().toISOString() };
+    await setRoles(items);
+    return items[id];
+  },
+
+  findByIdAndDelete: async (id: string) => {
+    const items = getRoles();
+    if (!items[id]) return null;
+    const deleted = items[id];
+    delete items[id];
+    await setRoles(items);
+    return deleted;
+  },
+};
+
+// --- Comment ---
+interface CommentRecord {
+  _id: string;
+  workspaceId: string;
+  userId: string;
+  userName: string;
+  entityType: string;
+  entityId: string;
+  content: string;
+  mentions: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function getComments() { return loadData<Record<string, CommentRecord>>(COMMENTS_FILE, {}); }
+async function setComments(data: Record<string, CommentRecord>) { await saveData(COMMENTS_FILE, data); }
+
+export const MockComment = {
+  find: async (entityType: string, entityId: string) => {
+    const items = getComments();
+    const results = Object.values(items)
+      .filter((c: any) => c.entityType === entityType && c.entityId === entityId)
+      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return results;
+  },
+
+  create: async (data: {
+    workspaceId: string; userId: string; userName: string;
+    entityType: string; entityId: string; content: string; mentions?: string[];
+  }) => {
+    const _id = generateId("commentId");
+    const now = new Date().toISOString();
+    const record: CommentRecord = {
+      _id, workspaceId: data.workspaceId, userId: data.userId, userName: data.userName,
+      entityType: data.entityType, entityId: data.entityId, content: data.content,
+      mentions: data.mentions || [], createdAt: now, updatedAt: now,
+    };
+    const items = getComments();
+    items[_id] = record;
+    await setComments(items);
+    return record;
+  },
+};
+
+// ─── Corbeille (Trash) ──────────────────────────────────────────
+const CORBEILLE_FILE = path.join(DATA_DIR, "corbeille.json");
+
+function getCorbeille() { return loadData<any[]>(CORBEILLE_FILE, []); }
+async function setCorbeille(items: any[]) { await saveData(CORBEILLE_FILE, items); }
+
+export const MockCorbeille = {
+  find: async (workspaceId?: string) => {
+    let items = getCorbeille();
+    if (workspaceId) items = items.filter((i: any) => i.workspaceId === workspaceId);
+    return items.sort((a: any, b: any) => new Date(b.supprimeLe).getTime() - new Date(a.supprimeLe).getTime());
+  },
+
+  create: async (data: any) => {
+    const items = getCorbeille();
+    items.unshift(data);
+    await setCorbeille(items);
+    return data;
+  },
+
+  findByIdAndDelete: async (id: string) => {
+    const items = getCorbeille();
+    const idx = items.findIndex((i: any) => i.id === id);
+    if (idx === -1) return null;
+    const removed = items.splice(idx, 1)[0];
+    await setCorbeille(items);
+    return removed;
+  },
+
+  deleteMany: async (workspaceId?: string) => {
+    if (workspaceId) {
+      const items = getCorbeille().filter((i: any) => i.workspaceId !== workspaceId);
+      await setCorbeille(items);
+    } else {
+      await setCorbeille([]);
+    }
+  },
+};
+
+// Initialize mock DB (synchronous - runs at module load)
+initMockDB().catch((e) => console.error("initMockDB failed:", e));

@@ -43,3 +43,13 @@ next-env.d.ts
 # python ml model
 /python/model/
 
+# data files (auto-generated, per-install)
+/data/
+
+# user uploads
+/public/uploads/
+
+# stray root-level corbeille file
+/corbeille.json
+
+

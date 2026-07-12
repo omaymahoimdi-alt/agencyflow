@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Bell, LogOut, Mail, Search, UserCircle2, ChevronDown } from "lucide-react";
 import { signOut } from "next-auth/react";
 import Link from "next/link";
+import NotificationDropdown from "@/components/NotificationDropdown";
 
 export default function Navbar({ userName = "Admin" }: { userName?: string }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -24,10 +25,7 @@ export default function Navbar({ userName = "Admin" }: { userName?: string }) {
           <Mail size={20} />
           <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 text-[9px] font-bold text-white">3</span>
         </button>
-        <button className="relative rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800">
-          <Bell size={20} />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">5</span>
-        </button>
+        <NotificationDropdown />
 
         {/* User avatar dropdown */}
         <div className="relative">

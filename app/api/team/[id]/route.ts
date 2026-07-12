@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
-import User from "@/models/User";
 import { MockTeam } from "@/lib/mock-db";
+import { logActivity } from "@/lib/activity";
 import { hash } from "bcryptjs";
-import fs from "fs";
-import path from "path";
 
-// Validation back-end TypeScript
 const validateTeamMemberServer = (data: any, isEditing: boolean) => {
   const errors: Record<string, string> = {};
   
@@ -36,41 +32,34 @@ const validateTeamMemberServer = (data: any, isEditing: boolean) => {
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const { id } = await params;
+
+    const existing = await MockTeam.findById(id);
+    if (!existing) return NextResponse.json({ message: "Membre non trouvé" }, { status: 404 });
+    if (existing.workspaceId !== session.user.workspaceId) {
+      return NextResponse.json({ message: "Non autorisé" }, { status: 403 });
+    }
+
     const body = await request.json();
     const validationErrors = validateTeamMemberServer(body, true);
     if (Object.keys(validationErrors).length > 0) {
       return NextResponse.json({ message: "Erreur de validation", errors: validationErrors }, { status: 400 });
     }
 
-    let user;
-    try {
-      await connectDB();
-      const updateData = { ...body };
-      if (updateData.password) {
-        updateData.password = await hash(updateData.password, 12);
-      } else {
-        delete updateData.password;
-      }
-      user = await User.findByIdAndUpdate(id, updateData, { new: true }).select("-password");
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB to update team member");
-      // Convert photo to avatar for mock DB
-      const updateData = { ...body };
-      if (updateData.photo) {
-        updateData.avatar = updateData.photo;
-        delete updateData.photo;
-      }
-      if (updateData.password) {
-        updateData.password = await hash(updateData.password, 12);
-      } else {
-        delete updateData.password;
-      }
-      user = await MockTeam.findByIdAndUpdate(id, updateData);
+    const updateData = { ...body };
+    if (updateData.photo) {
+      updateData.avatar = updateData.photo;
+      delete updateData.photo;
     }
+    if (updateData.password) {
+      updateData.password = await hash(updateData.password, 12);
+    } else {
+      delete updateData.password;
+    }
+    const user = await MockTeam.findByIdAndUpdate(id, updateData);
 
     if (!user) return NextResponse.json({ message: "Membre non trouvé" }, { status: 404 });
     return NextResponse.json(user);
@@ -83,18 +72,29 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const { id } = await params;
 
-    try {
-      await connectDB();
-      await User.findByIdAndDelete(id);
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB to delete team member");
-      await MockTeam.findByIdAndDelete(id);
+    const existing = await MockTeam.findById(id);
+    if (!existing) return NextResponse.json({ message: "Membre non trouvé" }, { status: 404 });
+    if (existing.workspaceId !== session.user.workspaceId) {
+      return NextResponse.json({ message: "Non autorisé" }, { status: 403 });
     }
+
+    const deleted = await MockTeam.findByIdAndDelete(id);
+
+    await logActivity({
+      workspaceId: session.user.workspaceId,
+      userId: session.user.id,
+      userName: session.user.name || "",
+      userEmail: session.user.email || "",
+      entityType: "team",
+      entityId: id,
+      entityName: deleted ? `${deleted.prenom} ${deleted.nom}` : "",
+      action: "deleted",
+    });
 
     return NextResponse.json({ message: "Membre supprimé" });
   } catch (error) {

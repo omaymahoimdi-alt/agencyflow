@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   Plus, Pencil, Trash2, Search, X, Building2, Filter, ArrowUpDown,
   AlertCircle, Star, Eye, Mail, ClipboardList,
@@ -21,6 +22,7 @@ interface Client {
   telephone: string;
   adresse: string;
   secteurActivite: string;
+  budget?: number;
   dateCreation: string;
   createdAt?: string;
   updatedAt?: string;
@@ -43,6 +45,7 @@ const emptyForm = {
   telephone: "",
   adresse: "",
   secteurActivite: "",
+  budget: "",
 };
 
 const validateClient = (data: typeof emptyForm, editingId?: string, allClients: Client[] = []) => {
@@ -104,7 +107,7 @@ function hashId(id: string) {
   return Math.abs(hash);
 }
 
-function enhanceClient(client: Client): ClientDisplay {
+function enhanceClient(client: Client & { projectsCount?: number; totalBudget?: number }): ClientDisplay {
   const h = hashId(client._id);
   const statuses: ClientDisplay["status"][] = ["Actif", "Actif", "Actif", "Prospect", "Inactif", "VIP"];
   const status = client.secteurActivite === "Informatique" ? "Actif"
@@ -114,8 +117,8 @@ function enhanceClient(client: Client): ClientDisplay {
 
   const score = 30 + (h % 70);
   const health: ClientDisplay["health"] = score >= 75 ? "Excellent" : score >= 55 ? "Moyen" : "Risque";
-  const projectsCount = 1 + (h % 15);
-  const totalBudget = (5 + (h % 50)) * 5000;
+  const projectsCount = client.projectsCount ?? (1 + (h % 15));
+  const totalBudget = client.totalBudget ?? ((5 + (h % 50)) * 5000);
 
   return {
     ...client,
@@ -131,6 +134,8 @@ function enhanceClient(client: Client): ClientDisplay {
 
 export default function ClientsPage() {
   const router = useRouter();
+  // Récupération de la session NextAuth pour identifier l'utilisateur connecté
+  const { data: session } = useSession();
   const [clients, setClients] = useState<ClientDisplay[]>([]);
   const [filtered, setFiltered] = useState<ClientDisplay[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,7 +147,7 @@ export default function ClientsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<Client | null>(null);
+  const [editing, setEditing] = useState<ClientDisplay | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -200,10 +205,11 @@ export default function ClientsPage() {
     setLoading(true);
     const res = await fetch("/api/clients");
     const data = await res.json();
-    const raw: Client[] = Array.isArray(data) ? data : [];
-    const enhanced = raw.map(enhanceClient);
-    setClients(enhanced);
-    setFiltered(enhanced);
+    if (res.ok && Array.isArray(data)) {
+      const enhanced = data.map(enhanceClient);
+      setClients(enhanced);
+      setFiltered(enhanced);
+    }
     setLoading(false);
   }
 
@@ -224,6 +230,7 @@ export default function ClientsPage() {
       telephone: client.telephone || "",
       adresse: client.adresse || "",
       secteurActivite: client.secteurActivite || "",
+      budget: client.budget?.toString() || "",
     });
     setErrors({});
     setError("");
@@ -245,10 +252,11 @@ export default function ClientsPage() {
 
     const method = editing ? "PUT" : "POST";
     const url = editing ? `/api/clients/${editing._id}` : "/api/clients";
+    const payload = { ...form, budget: form.budget ? Number(form.budget) : undefined };
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
@@ -267,11 +275,16 @@ export default function ClientsPage() {
     await fetch(`/api/clients/${id}`, { method: "DELETE" });
     fetchClients();
     if (client) {
-      addToCorbeille({
+      // Identification automatique du responsable via la session de l'utilisateur connecté.
+      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
+      const userName = session?.user?.name || "Utilisateur inconnu";
+      const userEmail = session?.user?.email || "—";
+      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+      await addToCorbeille({
         id: "corbeille-client-" + Date.now(),
         type: "Client",
         nom: client.nomSociete,
-        supprimePar: { nom: "Moi", fonction: "Utilisateur", avatar: "M" },
+        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
         supprimeLe: new Date().toISOString(),
         supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         sourceData: client,
@@ -853,6 +866,26 @@ export default function ClientsPage() {
                     {SECTEURS.map((secteur) => <option key={secteur} value={secteur}>{secteur}</option>)}
                   </select>
                   {errors.secteurActivite && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.secteurActivite}</p>}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Budget (DH)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.budget}
+                    onChange={(e) => setForm({ ...form, budget: e.target.value })}
+                    className={`w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100 ${errors.budget ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-slate-200 focus:border-indigo-400"}`}
+                  />
+                  {errors.budget && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.budget}</p>}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Projets liés</label>
+                  <div className="flex h-[42px] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+                    <Briefcase size={16} />
+                    {editing
+                      ? <span>{editing.projectsCount} projet{editing.projectsCount > 1 ? "s" : ""}</span>
+                      : <span>0 projet (créé après ajout)</span>}
+                  </div>
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">

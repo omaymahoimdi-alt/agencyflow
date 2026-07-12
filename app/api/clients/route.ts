@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
-import Client from "@/models/Client";
-import { MockClient } from "@/lib/mock-db";
+import { MockClient, MockProject } from "@/lib/mock-db";
+import { logActivity } from "@/lib/activity";
+import { notifyWorkspaceMembers } from "@/lib/notifications";
 
 // Validation serveur
 const validateClientServer = (data: any, existingClients: any[] = [], editingId?: string) => {
@@ -56,18 +56,17 @@ const validateClientServer = (data: any, existingClients: any[] = [], editingId?
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
-    let clients;
-    try {
-      await connectDB();
-      clients = await Client.find({ userId: session.user.id }).sort({ createdAt: -1 });
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB for clients");
-      clients = await MockClient.find(session.user.id);
-    }
-    return NextResponse.json(clients);
+    const clients = await MockClient.find(session.user.workspaceId);
+    const projectStats = await MockProject.countByClient(session.user.workspaceId);
+    const enriched = clients.map((c: any) => ({
+      ...c,
+      projectsCount: projectStats[c._id]?.count || 0,
+      totalBudget: c.budget || 0,
+    }));
+    return NextResponse.json(enriched);
   } catch (error) {
     console.error("Error fetching clients:", error);
     return NextResponse.json({ message: "Erreur serveur" }, { status: 500 });
@@ -77,19 +76,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.workspaceId) {
       return NextResponse.json({ message: "Non autorisé" }, { status: 401 });
     }
     const body = await request.json();
-    const { nomSociete, responsable, email, telephone, adresse, secteurActivite } = body;
+    const { nomSociete, responsable, email, telephone, adresse, secteurActivite, budget } = body;
 
-    let existingClients;
-    try {
-      await connectDB();
-      existingClients = await Client.find({ userId: session.user.id });
-    } catch (dbError) {
-      existingClients = await MockClient.find(session.user.id);
-    }
+    const existingClients = await MockClient.find(session.user.workspaceId);
 
     // Validation serveur
     const validationErrors = validateClientServer(body, existingClients);
@@ -100,14 +93,27 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    let client;
-    try {
-      await connectDB();
-      client = await Client.create({ nomSociete, responsable, email, telephone, adresse, secteurActivite, userId: session.user.id });
-    } catch (dbError) {
-      console.log("MongoDB not available, using mock DB to create client");
-      client = await MockClient.create({ nomSociete, responsable, email, telephone, adresse, secteurActivite, userId: session.user.id });
-    }
+    const client = await MockClient.create({ nomSociete, responsable, email, telephone, adresse, secteurActivite, budget, workspaceId: session.user.workspaceId });
+    await logActivity({
+      workspaceId: session.user.workspaceId,
+      userId: session.user.id,
+      userName: session.user.name || "",
+      userEmail: session.user.email || "",
+      entityType: "client",
+      entityId: client._id.toString(),
+      entityName: client.nomSociete,
+      action: "created",
+    });
+    await notifyWorkspaceMembers(
+      session.user.workspaceId,
+      session.user.id,
+      "activity",
+      `Nouveau client : ${client.nomSociete}`,
+      `${session.user.name || "Quelqu'un"} a ajouté le client "${client.nomSociete}"`,
+      `/dashboard/clients/${client._id}`,
+      "client", client._id.toString(),
+      session.user.name || "",
+    );
     return NextResponse.json(client, { status: 201 });
   } catch (error) {
     console.error("Error creating client:", error);

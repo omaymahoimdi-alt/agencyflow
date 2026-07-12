@@ -20,6 +20,7 @@ const UserSchema = new Schema(
     telephone: { type: String, default: "" },
     photo: { type: String, default: "" },
     dateEmbauche: { type: Date, default: Date.now },
+    activeWorkspaceId: { type: Schema.Types.ObjectId, ref: "Workspace", default: null },
   },
   { timestamps: true }
 );
