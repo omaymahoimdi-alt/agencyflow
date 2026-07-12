@@ -8,10 +8,6 @@ dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
-if (!MONGODB_URI) {
-  throw new Error("Veuillez definir MONGODB_URI dans .env.local");
-}
-
 type MongooseCache = {
   conn: Mongoose | null;
   promise: Promise<Mongoose> | null;
@@ -28,6 +24,9 @@ if (!globalWithMongoose.mongooseCache) {
 const cached = globalWithMongoose.mongooseCache;
 
 export async function connectDB(): Promise<Mongoose> {
+  if (!MONGODB_URI) {
+    throw new Error("Veuillez definir MONGODB_URI dans .env.local");
+  }
   if (cached.conn && mongoose.connection.readyState === 1) {
     return cached.conn;
   }
@@ -39,7 +38,7 @@ export async function connectDB(): Promise<Mongoose> {
 
   if (!cached.promise) {
     cached.promise = mongoose
-      .connect(MONGODB_URI as string, {
+      .connect(MONGODB_URI, {
         bufferCommands: false,
         serverSelectionTimeoutMS: 15000,
         socketTimeoutMS: 45000,
