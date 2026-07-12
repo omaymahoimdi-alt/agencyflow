@@ -32,7 +32,7 @@ export async function GET() {
     const workspaceId = session.user.workspaceId || "default";
     let equipes = [];
 
-    if (process.env.VERCEL || process.env.MONGODB_URI) {
+    if (process.env.MONGODB_URI) {
       equipes = await getEquipesFromStore(workspaceId);
     } else {
       const fs = await import("fs");
@@ -59,7 +59,7 @@ export async function PUT(request: Request) {
     const workspaceId = session.user.workspaceId || "default";
     const data = await request.json();
 
-    if (process.env.VERCEL || process.env.MONGODB_URI) {
+    if (process.env.MONGODB_URI) {
       await saveEquipesToStore(workspaceId, data);
     } else {
       const fs = await import("fs");

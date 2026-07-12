@@ -381,8 +381,8 @@ const ROLES_FILE = path.join(DATA_DIR, "roles.json");
 // In-memory cache so sync loadData sees writes made by async saveData
 const memoryCache = new Map<string, any>();
 
-// Preload cache from MongoDB on Vercel startup
-if (process.env.VERCEL || process.env.MONGODB_URI) {
+// Preload cache from MongoDB when MONGODB_URI is available
+if (process.env.MONGODB_URI) {
   (async () => {
     try {
       const { default: DataStore } = await import("@/models/DataStore");
@@ -423,8 +423,8 @@ export function loadData<T>(filePath: string, defaultValue: T): T {
 export async function saveData<T>(filePath: string, data: T) {
   // Always update in-memory cache so sync loadData sees latest writes immediately
   memoryCache.set(filePath, data);
-  // On Vercel (or when MONGODB_URI is set), persist via MongoDB DataStore
-  if (process.env.VERCEL || process.env.MONGODB_URI) {
+  // When MONGODB_URI is available, also persist via MongoDB DataStore
+  if (process.env.MONGODB_URI) {
     try {
       const { default: DataStore } = await import("@/models/DataStore");
       const { connectDB } = await import("@/lib/mongodb");

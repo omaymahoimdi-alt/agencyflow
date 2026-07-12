@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     let folders = null;
 
-    if (process.env.VERCEL || process.env.MONGODB_URI) {
+    if (process.env.MONGODB_URI) {
       try {
         folders = await getFoldersFromStore(id);
       } catch {
@@ -64,7 +64,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const data = await request.json();
 
-    if (process.env.VERCEL || process.env.MONGODB_URI) {
+    if (process.env.MONGODB_URI) {
       try {
         await saveFoldersToStore(id, data);
       } catch (e) {
