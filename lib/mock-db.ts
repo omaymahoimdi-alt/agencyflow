@@ -532,7 +532,7 @@ if (!fs.existsSync(CLIENT_INVOICES_FILE))
   }
 }
 
-initializeFiles();
+try { initializeFiles(); } catch { /* Vercel read-only filesystem — data stored in MongoDB */ }
 
 // Helper functions to load/save data fresh each time
 function getUsers() { return loadData<Record<string, User>>(USERS_FILE, {}); }
