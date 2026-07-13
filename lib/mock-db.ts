@@ -389,10 +389,20 @@ if (process.env.MONGODB_URI) {
       const { connectDB } = await import("@/lib/mongodb");
       await connectDB();
       const allDocs = await DataStore.find({}).lean();
-      for (const doc of allDocs) {
-        memoryCache.set(doc.key as string, doc.value);
+      const seedCleanupKey = "_seed_cleanup_done";
+      const hasCleanupDone = allDocs.some((d: any) => d.key === seedCleanupKey);
+      if (!hasCleanupDone) {
+        // First deploy without seed data — clear stale seed data from MongoDB
+        await DataStore.deleteMany({ key: { $ne: seedCleanupKey } });
+        await DataStore.create({ key: seedCleanupKey, value: true });
+        console.log("Cleared stale seed data from MongoDB DataStore");
+      } else {
+        for (const doc of allDocs) {
+          if (doc.key === seedCleanupKey) continue;
+          memoryCache.set(doc.key as string, doc.value);
+        }
+        console.log(`Preloaded ${allDocs.length - 1} keys from MongoDB DataStore`);
       }
-      console.log(`Preloaded ${allDocs.length} keys from MongoDB DataStore`);
     } catch (e) {
       console.error("DataStore preload failed (normal on first deploy):", e);
     }

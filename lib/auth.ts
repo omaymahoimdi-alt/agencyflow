@@ -397,22 +397,33 @@ export const authOptions: NextAuthOptions = {
       // Ensure user has a MockTeam entry for the employee count
       if (token.id && token.workspaceId) {
         try {
-          const mockUser = await MockUser.findOne({ email: token.email || "" });
-          if (mockUser) {
-            const allTeam = await MockTeam.find({});
-            const hasEntry = allTeam.some((t: any) => t.userId === mockUser._id);
-            if (!hasEntry) {
-              const nameParts = (mockUser.name || "Utilisateur").split(" ");
-              await MockTeam.create({
-                nom: nameParts.slice(1).join(" ") || "Inconnu",
-                prenom: nameParts[0] || "Utilisateur",
-                email: mockUser.email.toLowerCase(),
-                password: mockUser.password || "",
-                role: "Admin",
-                userId: mockUser._id,
-                workspaceId: token.workspaceId,
-              });
-            }
+          const displayName = (token.name as string) || token.email || "Utilisateur";
+          const nameParts = displayName.split(" ");
+          let userId = token.id as string;
+          // Try mock DB first, then MongoDB
+          let foundUser = await MockUser.findOne({ email: token.email || "" });
+          if (!foundUser) {
+            try {
+              await connectDB();
+              const User = (await import("@/models/User")).default;
+              const dbUser = await User.findById(token.id);
+              if (dbUser) userId = dbUser._id.toString();
+            } catch { /* ignore */ }
+          } else {
+            userId = foundUser._id;
+          }
+          const allTeam = await MockTeam.find({});
+          const hasEntry = allTeam.some((t: any) => t.userId === userId);
+          if (!hasEntry) {
+            await MockTeam.create({
+              nom: nameParts.slice(1).join(" ") || nameParts[0] || "Inconnu",
+              prenom: nameParts[0] || "Utilisateur",
+              email: (token.email as string) || "",
+              password: "",
+              role: "Admin",
+              userId,
+              workspaceId: token.workspaceId,
+            });
           }
         } catch { /* ignore */ }
       }
