@@ -157,6 +157,7 @@ export default function DocumentsPage() {
       nomDocument: file.name,
       type: docType,
       url: uploadData.url,
+      publicId: uploadData.publicId || "",
     }));
     setUploading(false);
   }

@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import path from "path";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+function useCloudinary(): boolean {
+  return !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+}
 
 export async function POST(request: Request) {
   try {
@@ -32,7 +43,6 @@ export async function POST(request: Request) {
       "application/zip",
       "application/x-zip-compressed",
     ];
-    // Also check file extension as fallback (since some file types don't have correct MIME types)
     const allowedExtensions = [".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip"];
     const fileExtension = path.extname(file.name).toLowerCase();
 
@@ -41,27 +51,50 @@ export async function POST(request: Request) {
     }
 
     // Validate file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json({ message: "Fichier trop volumineux (max 5MB)" }, { status: 400 });
     }
 
-    // Generate unique filename
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
     const uniqueName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+
+    if (useCloudinary()) {
+      // Upload to Cloudinary
+      const publicId = `agencyflow/${folder}/${uniqueName.replace(/\.[^.]+$/, "")}`;
+      const result = await new Promise<any>((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            public_id: publicId,
+            resource_type: "auto",
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(buffer);
+      });
+
+      return NextResponse.json({
+        url: result.secure_url,
+        publicId: result.public_id,
+        originalName: file.name,
+        type: file.type,
+      });
+    }
+
+    // Fallback to local filesystem
     const uploadDir = path.join(process.cwd(), "public", "uploads", folder);
     const filePath = path.join(uploadDir, uniqueName);
 
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    // Save file
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
     fs.writeFileSync(filePath, buffer);
 
-    // Return URL
     const fileUrl = `/uploads/${folder}/${uniqueName}`;
 
     return NextResponse.json({

@@ -163,6 +163,7 @@ interface Document {
   type: string;
   description?: string;
   url: string;
+  publicId?: string;
   dateUpload: string;
   projectId: string;
   uploadedBy: string;
@@ -1643,6 +1644,7 @@ export const MockDocument = {
     type: string;
     description?: string;
     url: string;
+    publicId?: string;
     projectId: string;
     uploadedBy: string;
     workspaceId: string;
@@ -1655,6 +1657,7 @@ export const MockDocument = {
       type: docData.type,
       description: docData.description || "",
       url: docData.url,
+      publicId: docData.publicId || "",
       dateUpload: new Date().toISOString().split('T')[0],
       projectId: docData.projectId,
       uploadedBy: docData.uploadedBy,

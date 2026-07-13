@@ -43,6 +43,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       const deleted = await MockDocument.findByIdAndDelete(id);
       if (!deleted) return NextResponse.json({ message: "Document non trouvé" }, { status: 404 });
       
+      // Delete from Cloudinary if publicId exists
+      if (deleted.publicId) {
+        try {
+          await cloudinary.uploader.destroy(deleted.publicId, { resource_type: "auto" });
+        } catch (e) {
+          console.warn("Could not delete from Cloudinary:", e);
+        }
+      }
+      
       // Delete local file if needed
       if (deleted.url && deleted.url.startsWith('/')) {
         const localPath = path.join(process.cwd(), "public", deleted.url);

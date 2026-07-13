@@ -48,12 +48,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           html: body.message.replace(/\n/g, "<br>"),
         };
         if (body.attachmentUrl) {
-          const attachmentPath = path.join(process.cwd(), "public", body.attachmentUrl);
-          if (fs.existsSync(attachmentPath)) {
-            mailOptions.attachments = [{
-              filename: body.attachmentName || path.basename(body.attachmentUrl),
-              path: attachmentPath,
-            }];
+          if (body.attachmentUrl.startsWith("http")) {
+            const response = await fetch(body.attachmentUrl);
+            if (response.ok) {
+              const arrayBuffer = await response.arrayBuffer();
+              mailOptions.attachments = [{
+                filename: body.attachmentName || path.basename(body.attachmentUrl),
+                content: Buffer.from(arrayBuffer),
+              }];
+            }
+          } else {
+            const attachmentPath = path.join(process.cwd(), "public", body.attachmentUrl);
+            if (fs.existsSync(attachmentPath)) {
+              mailOptions.attachments = [{
+                filename: body.attachmentName || path.basename(body.attachmentUrl),
+                path: attachmentPath,
+              }];
+            }
           }
         }
         await transporter.sendMail(mailOptions);
