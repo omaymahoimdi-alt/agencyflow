@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectDB } from "@/lib/mongodb";
-import Corbeille from "@/models/Corbeille";
 import { MockTeam, MockCorbeille } from "@/lib/mock-db";
 import { logActivity } from "@/lib/activity";
 import { hash } from "bcryptjs";
@@ -99,31 +97,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       supprimeLe: new Date().toISOString(),
       supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       sourceData: deleted || null,
+      workspaceId: session.user.workspaceId,
+      deletedBy: session.user.id,
     };
-    if (process.env.MONGODB_URI) {
-      try {
-        await connectDB();
-        await Corbeille.findOneAndUpdate(
-          { corbeilleId: corbeilleItem.id },
-          {
-            corbeilleId: corbeilleItem.id,
-            workspaceId: session.user.workspaceId,
-            deletedBy: session.user.id,
-            type: "Membre",
-            nom: corbeilleItem.nom,
-            supprimePar: corbeilleItem.supprimePar,
-            supprimeLe: new Date(corbeilleItem.supprimeLe),
-            supprimeDefinitivementLe: new Date(corbeilleItem.supprimeDefinitivementLe),
-            sourceData: corbeilleItem.sourceData,
-          },
-          { upsert: true }
-        );
-      } catch (dbError) {
-        console.error("Corbeille MongoDB POST failed:", dbError);
-      }
-    }
     try {
-      await MockCorbeille.create({ ...corbeilleItem, workspaceId: session.user.workspaceId, deletedBy: session.user.id });
+      await MockCorbeille.create(corbeilleItem);
     } catch (e) {
       console.error("Corbeille MockCorbeille POST failed:", e);
     }

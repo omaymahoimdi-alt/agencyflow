@@ -515,6 +515,7 @@ if (!fs.existsSync(CLIENT_INVOICES_FILE))
   if (!fs.existsSync(CLIENTS_FILE)) saveData(CLIENTS_FILE, {});
   if (!fs.existsSync(EMAIL_TO_ID_FILE)) saveData(EMAIL_TO_ID_FILE, {});
   if (!fs.existsSync(SLUG_TO_ID_FILE)) saveData(SLUG_TO_ID_FILE, {});
+  if (!fs.existsSync(CORBEILLE_FILE)) saveData(CORBEILLE_FILE, []);
   if (!fs.existsSync(COUNTERS_FILE)) {
     saveData(COUNTERS_FILE, {
       userId: 1,

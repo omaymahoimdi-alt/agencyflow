@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Document from "@/models/Document";
 import FileStore from "@/models/FileStore";
-import Corbeille from "@/models/Corbeille";
 import { MockDocument, MockCorbeille } from "@/lib/mock-db";
 import fs from "fs";
 import path from "path";
@@ -32,26 +31,11 @@ async function addDocToCorbeille(doc: any, session: any) {
     supprimeLe: new Date().toISOString(),
     supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     sourceData: doc,
+    workspaceId: session?.user?.workspaceId || "",
+    deletedBy: session?.user?.id || "",
   };
-  if (process.env.MONGODB_URI) {
-    try {
-      await connectDB();
-      await Corbeille.findOneAndUpdate(
-        { corbeilleId: item.id },
-        {
-          corbeilleId: item.id, workspaceId: session.user.workspaceId, deletedBy: session.user.id,
-          type: "Fichier", nom: item.nom, supprimePar: item.supprimePar,
-          supprimeLe: new Date(item.supprimeLe), supprimeDefinitivementLe: new Date(item.supprimeDefinitivementLe),
-          sourceData: item.sourceData,
-        },
-        { upsert: true }
-      );
-    } catch (dbError) {
-      console.error("Corbeille MongoDB POST failed:", dbError);
-    }
-  }
   try {
-    await MockCorbeille.create({ ...item, workspaceId: session.user.workspaceId, deletedBy: session.user.id });
+    await MockCorbeille.create(item);
   } catch (e) {
     console.error("Corbeille MockCorbeille POST failed:", e);
   }
