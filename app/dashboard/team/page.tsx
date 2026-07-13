@@ -14,7 +14,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import Recaptcha from "@/components/Recaptcha";
 import { useSession } from "next-auth/react";
-import { addToCorbeille } from "@/lib/corbeille";
+
 
 // --- Types ---
 interface TeamMember {
@@ -620,24 +620,9 @@ export default function TeamPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Supprimer ce membre ?")) return;
-    const member = members.find(m => m._id === id);
     await fetch(`/api/team/${id}`, { method: "DELETE" });
     setMembers(prev => prev.filter(m => m._id !== id));
     setMemberMenu(null);
-    if (member) {
-      const userName = session?.user?.name || "Utilisateur inconnu";
-      const userEmail = session?.user?.email || "—";
-      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
-      await addToCorbeille({
-        id: "corbeille-membre-" + Date.now(),
-        type: "Membre",
-        nom: member.prenom + " " + member.nom,
-        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
-        supprimeLe: new Date().toISOString(),
-        supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        sourceData: member,
-      });
-    }
   }
 
   function handleToggleFavorite(id: string) {

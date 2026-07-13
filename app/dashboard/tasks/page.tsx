@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Plus, Pencil, Trash2, X, CheckSquare, Search, Filter, ArrowUpDown, AlertCircle } from "lucide-react";
-import { addToCorbeille } from "@/lib/corbeille";
+
 
 interface Project { _id: string; titre: string }
 interface User { _id: string; nom: string; prenom: string }
@@ -211,25 +211,8 @@ export default function TasksPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Supprimer cette tâche ?")) return;
-    const task = tasks.find(t => t._id === id);
     await fetch(`/api/tasks/${id}`, { method: "DELETE" });
     refreshTasks();
-    if (task) {
-      // Identification automatique du responsable via la session de l'utilisateur connecté.
-      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
-      const userName = session?.user?.name || "Utilisateur inconnu";
-      const userEmail = session?.user?.email || "—";
-      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
-      await addToCorbeille({
-        id: "corbeille-tache-" + Date.now(),
-        type: "Tâche",
-        nom: task.titre,
-        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
-        supprimeLe: new Date().toISOString(),
-        supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        sourceData: task,
-      });
-    }
   }
 
   async function changeStatut(task: Task, statut: string) {

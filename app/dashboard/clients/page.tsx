@@ -10,7 +10,7 @@ import {
   Briefcase, DollarSign, Heart, Activity, TrendingUp, Award,
   Phone, MapPin, Clock, CheckSquare, UserCircle2,
 } from "lucide-react";
-import { addToCorbeille } from "@/lib/corbeille";
+
 
 const SECTEURS = ["E-commerce", "Santé", "Education", "Informatique", "Finance", "Immobilier"] as const;
 
@@ -271,25 +271,8 @@ export default function ClientsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Supprimer ce client ?")) return;
-    const client = clients.find(c => c._id === id);
     await fetch(`/api/clients/${id}`, { method: "DELETE" });
     fetchClients();
-    if (client) {
-      // Identification automatique du responsable via la session de l'utilisateur connecté.
-      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
-      const userName = session?.user?.name || "Utilisateur inconnu";
-      const userEmail = session?.user?.email || "—";
-      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
-      await addToCorbeille({
-        id: "corbeille-client-" + Date.now(),
-        type: "Client",
-        nom: client.nomSociete,
-        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
-        supprimeLe: new Date().toISOString(),
-        supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        sourceData: client,
-      });
-    }
   }
 
   function toggleFavorite(id: string) {

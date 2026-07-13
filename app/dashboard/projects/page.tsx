@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
-import { addToCorbeille } from "@/lib/corbeille";
+
 
 interface Client { _id: string; nomSociete: string }
 interface User { _id: string; nom: string; prenom: string }
@@ -220,25 +220,8 @@ export default function ProjectsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Supprimer ce projet ?")) return;
-    const project = projects.find(p => p._id === id);
     await fetch(`/api/projects/${id}`, { method: "DELETE" });
     refreshProjects();
-    if (project) {
-      // Identification automatique du responsable via la session de l'utilisateur connecté.
-      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
-      const userName = session?.user?.name || "Utilisateur inconnu";
-      const userEmail = session?.user?.email || "—";
-      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
-      await addToCorbeille({
-        id: "corbeille-projet-" + Date.now(),
-        type: "Projet",
-        nom: project.titre,
-        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
-        supprimeLe: new Date().toISOString(),
-        supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        sourceData: project,
-      });
-    }
   }
 
   function toggleFavorite(id: string) {

@@ -1272,20 +1272,6 @@ export default function ProjectDetailPage() {
     refreshTasks();
     if (task) {
       createActivity("task_deleted", `a supprimé la tâche « ${task.titre} »`);
-      // Identification automatique du responsable via la session de l'utilisateur connecté.
-      // Exemple : si Amira est connectée, supprimePar affichera son nom ("Amira Benali") et son email.
-      const userName = session?.user?.name || "Utilisateur inconnu";
-      const userEmail = session?.user?.email || "—";
-      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
-      await addToCorbeille({
-        id: "corbeille-tache-" + Date.now(),
-        type: "Tâche",
-        nom: task.titre,
-        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
-        supprimeLe: new Date().toISOString(),
-        supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        sourceData: task,
-      });
     }
   }
 

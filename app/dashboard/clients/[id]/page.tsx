@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { addToCorbeille } from "@/lib/corbeille";
+
 import {
   ArrowLeft, Star, Mail, Phone, MapPin, Globe, Building2,
   MoreVertical, Pencil, Trash2, Send, Paperclip, Bell,
@@ -763,20 +763,6 @@ export default function ClientDetailsPage() {
       const res = await fetch(`/api/clients/${id}/documents`);
       const data = await res.json();
       setDocuments(Array.isArray(data) ? data : []);
-      if (doc) {
-        const userName = session?.user?.name || "Utilisateur inconnu";
-        const userEmail = session?.user?.email || "—";
-        const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
-        await addToCorbeille({
-          id: "corbeille-fichier-" + Date.now(),
-          type: "Fichier",
-          nom: doc.documentName,
-          supprimePar: { nom: userName, email: userEmail, fonction: "Utilisateur", avatar: userAvatar },
-          supprimeLe: new Date().toISOString(),
-          supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          sourceData: doc,
-        });
-      }
       await createActivity("DELETE_DOCUMENT", "Document supprimé");
     } catch (err) {
       console.error("Delete doc error", err);
@@ -976,20 +962,6 @@ export default function ClientDetailsPage() {
     if (!confirm("Supprimer ce client ?")) return;
     const clientData = client;
     await fetch(`/api/clients/${id}`, { method: "DELETE" });
-    if (clientData) {
-      const userName = session?.user?.name || "Utilisateur inconnu";
-      const userEmail = session?.user?.email || "—";
-      const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
-      await addToCorbeille({
-        id: "corbeille-client-" + Date.now(),
-        type: "Client",
-        nom: clientData.nomSociete,
-        supprimePar: { nom: userName, email: userEmail, fonction: session?.user?.role || "Utilisateur", avatar: userAvatar },
-        supprimeLe: new Date().toISOString(),
-        supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        sourceData: clientData,
-      });
-    }
     router.push("/dashboard/clients");
   }
 
