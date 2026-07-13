@@ -61,22 +61,13 @@ export async function POST(request: Request) {
     const uniqueName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
 
     if (useCloudinary()) {
-      // Upload to Cloudinary
       const publicId = `agencyflow/${folder}/${uniqueName.replace(/\.[^.]+$/, "")}`;
-      const result = await new Promise<any>((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            public_id: publicId,
-            resource_type: "auto",
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        );
-        uploadStream.end(buffer);
+      const base64 = buffer.toString("base64");
+      const dataUri = `data:${file.type || "application/octet-stream"};base64,${base64}`;
+      const result = await cloudinary.uploader.upload(dataUri, {
+        public_id: publicId,
+        resource_type: "auto",
       });
-
       return NextResponse.json({
         url: result.secure_url,
         publicId: result.public_id,
@@ -85,7 +76,10 @@ export async function POST(request: Request) {
       });
     }
 
-    // Fallback to local filesystem
+    // Fallback to local filesystem (local dev only)
+    if (process.env.VERCEL) {
+      return NextResponse.json({ message: "Cloudinary non configuré - ajoutez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET dans Vercel" }, { status: 500 });
+    }
     const uploadDir = path.join(process.cwd(), "public", "uploads", folder);
     const filePath = path.join(uploadDir, uniqueName);
 
