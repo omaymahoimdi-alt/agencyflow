@@ -3152,5 +3152,7 @@ export const MockCorbeille = {
   },
 };
 
-// Initialize mock DB (synchronous - runs at module load)
-initMockDB().catch((e) => console.error("initMockDB failed:", e));
+// Initialize mock DB with demo data (local dev only — on Vercel with MongoDB, start fresh)
+if (!process.env.MONGODB_URI) {
+  initMockDB().catch((e) => console.error("initMockDB failed:", e));
+}
