@@ -5,6 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import DataStore from "@/models/DataStore";
 import { MockCorbeille } from "@/lib/mock-db";
 
+// Must match CORBEILLE_DATASTORE_KEY in mock-db.ts
 const CORBEILLE_KEY = "corbeille";
 
 async function getDataStoreItems(workspaceId?: string) {
@@ -21,43 +22,6 @@ async function getDataStoreItems(workspaceId?: string) {
   }
 }
 
-async function addToDataStore(item: any) {
-  try {
-    await connectDB();
-    const doc = await DataStore.findOne({ key: CORBEILLE_KEY });
-    const items = (doc?.value && Array.isArray(doc.value)) ? [...doc.value] : [];
-    items.unshift(item);
-    await DataStore.findOneAndUpdate(
-      { key: CORBEILLE_KEY },
-      { key: CORBEILLE_KEY, value: items },
-      { upsert: true }
-    );
-    return true;
-  } catch (e) {
-    console.error("DataStore corbeille write failed:", e);
-    return false;
-  }
-}
-
-async function removeFromDataStore(id: string) {
-  try {
-    await connectDB();
-    const doc = await DataStore.findOne({ key: CORBEILLE_KEY });
-    const items = (doc?.value && Array.isArray(doc.value)) ? doc.value : [];
-    const filtered = items.filter((i: any) => i.id !== id);
-    if (filtered.length === items.length) return false;
-    await DataStore.findOneAndUpdate(
-      { key: CORBEILLE_KEY },
-      { key: CORBEILLE_KEY, value: filtered },
-      { upsert: true }
-    );
-    return true;
-  } catch (e) {
-    console.error("DataStore corbeille remove failed:", e);
-    return false;
-  }
-}
-
 async function clearDataStore() {
   try {
     await connectDB();
@@ -66,6 +30,7 @@ async function clearDataStore() {
       { key: CORBEILLE_KEY, value: [] },
       { upsert: true }
     );
+    await MockCorbeille.deleteMany();
     return true;
   } catch (e) {
     console.error("DataStore corbeille clear failed:", e);
@@ -74,7 +39,7 @@ async function clearDataStore() {
 }
 
 async function restoreInDataStore(id: string) {
-  return removeFromDataStore(id);
+  return MockCorbeille.findByIdAndDelete(id);
 }
 
 export async function GET() {
@@ -123,21 +88,8 @@ export async function POST(request: Request) {
       deletedBy: session.user.id,
     };
 
-    // Write to DataStore directly
-    const dsOk = await addToDataStore(item);
-
-    // Also write to MockCorbeille (memoryCache for same-request reads, local dev)
-    let mockOk = false;
-    try {
-      await MockCorbeille.create(item);
-      mockOk = true;
-    } catch (e) {
-      console.error("MockCorbeille POST failed:", e);
-    }
-
-    if (!dsOk && !mockOk) {
-      return NextResponse.json({ message: "Erreur lors de l'ajout à la corbeille" }, { status: 500 });
-    }
+    // MockCorbeille.create writes to both memoryCache and DataStore
+    await MockCorbeille.create(item);
 
     return NextResponse.json({ id: item.id, type: item.type, nom: item.nom }, { status: 201 });
   } catch {
@@ -157,17 +109,15 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ message: "ID requis" }, { status: 400 });
     }
 
-    const dsOk = await removeFromDataStore(id);
-
-    let mockOk = false;
+    let ok = false;
     try {
       const deleted = await MockCorbeille.findByIdAndDelete(id);
-      mockOk = !!deleted;
+      ok = !!deleted;
     } catch (e) {
       console.error("MockCorbeille DELETE failed:", e);
     }
 
-    if (!dsOk && !mockOk) {
+    if (!ok) {
       return NextResponse.json({ message: "Élément non trouvé" }, { status: 404 });
     }
 

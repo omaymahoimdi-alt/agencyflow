@@ -3129,9 +3129,51 @@ export const MockComment = {
 
 // ─── Corbeille (Trash) ──────────────────────────────────────────
 const CORBEILLE_FILE = path.join(DATA_DIR, "corbeille.json");
+const CORBEILLE_DATASTORE_KEY = "corbeille";
 
-function getCorbeille() { return loadData<any[]>(CORBEILLE_FILE, []); }
-async function setCorbeille(items: any[]) { await saveData(CORBEILLE_FILE, items); }
+function getCorbeille(): any[] {
+  // Check memoryCache first (happens after setCorbeille writes)
+  if (memoryCache.has(CORBEILLE_DATASTORE_KEY)) {
+    return memoryCache.get(CORBEILLE_DATASTORE_KEY) as any[];
+  }
+  // Fall back to JSON file (local dev)
+  if (fs.existsSync(CORBEILLE_FILE)) {
+    try {
+      const data = fs.readFileSync(CORBEILLE_FILE, "utf8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        memoryCache.set(CORBEILLE_DATASTORE_KEY, parsed);
+        return parsed;
+      }
+    } catch { /* ignore */ }
+  }
+  return [];
+}
+async function setCorbeille(items: any[]) {
+  memoryCache.set(CORBEILLE_DATASTORE_KEY, items);
+  if (process.env.MONGODB_URI) {
+    try {
+      const { default: DataStore } = await import("@/models/DataStore");
+      const { connectDB } = await import("@/lib/mongodb");
+      await connectDB();
+      await DataStore.findOneAndUpdate(
+        { key: CORBEILLE_DATASTORE_KEY },
+        { key: CORBEILLE_DATASTORE_KEY, value: items },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.error("MongoDB corbeille save failed:", e);
+    }
+  }
+  // Local dev: write to JSON file
+  try {
+    const dir = path.dirname(CORBEILLE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(CORBEILLE_FILE, JSON.stringify(items, null, 2));
+  } catch (e) {
+    console.error("Corbeille file save failed:", e);
+  }
+}
 
 export const MockCorbeille = {
   find: async (workspaceId?: string) => {
