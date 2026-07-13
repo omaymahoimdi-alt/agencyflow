@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { MockProject } from "@/lib/mock-db";
+import { connectDB } from "@/lib/mongodb";
+import Corbeille from "@/models/Corbeille";
+import { MockProject, MockCorbeille } from "@/lib/mock-db";
 import { logActivity } from "@/lib/activity";
 
 const STATUTS = ["En attente", "En cours", "En test", "Terminé", "Suspendu"] as const;
@@ -89,6 +91,40 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     project = await MockProject.findByIdAndDelete(id);
     if (!project) return NextResponse.json({ message: "Projet non trouvé" }, { status: 404 });
     const deletedTitle = project.titre || "";
+
+    // Add to corbeille server-side
+    const corbeilleItem = {
+      id: "corbeille-projet-" + Date.now(),
+      type: "Projet",
+      nom: deletedTitle,
+      supprimePar: { nom: userName, email: userEmail, fonction: (session?.user as any)?.role || "Utilisateur", avatar: (userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?") },
+      supprimeLe: new Date().toISOString(),
+      supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      sourceData: project,
+    };
+    if (process.env.MONGODB_URI) {
+      try {
+        await connectDB();
+        await Corbeille.findOneAndUpdate(
+          { corbeilleId: corbeilleItem.id },
+          {
+            corbeilleId: corbeilleItem.id, workspaceId, deletedBy: userId,
+            type: "Projet", nom: corbeilleItem.nom, supprimePar: corbeilleItem.supprimePar,
+            supprimeLe: new Date(corbeilleItem.supprimeLe), supprimeDefinitivementLe: new Date(corbeilleItem.supprimeDefinitivementLe),
+            sourceData: corbeilleItem.sourceData,
+          },
+          { upsert: true }
+        );
+      } catch (dbError) {
+        console.error("Corbeille MongoDB POST failed:", dbError);
+      }
+    }
+    try {
+      await MockCorbeille.create({ ...corbeilleItem, workspaceId, deletedBy: userId });
+    } catch (e) {
+      console.error("Corbeille MockCorbeille POST failed:", e);
+    }
+
     await logActivity({
       workspaceId, userId, userName, userEmail,
       entityType: "project",

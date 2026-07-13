@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import FileStore from "@/models/FileStore";
-import { MockClientDocument } from "@/lib/mock-db";
+import Corbeille from "@/models/Corbeille";
+import { MockClientDocument, MockCorbeille } from "@/lib/mock-db";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
@@ -110,12 +111,51 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const session = await getServerSession(authOptions);
     const { id } = await params;
     const body = await request.json();
     if (!body._id) {
       return NextResponse.json({ message: "ID requis" }, { status: 400 });
     }
     const deleted = await MockClientDocument.findByIdAndDelete(body._id);
+    if (!deleted) return NextResponse.json({ message: "Document non trouvé" }, { status: 404 });
+
+    // Add to corbeille server-side
+    const userName = session?.user?.name || "Utilisateur inconnu";
+    const userEmail = session?.user?.email || "—";
+    const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+    const corbeilleItem = {
+      id: "corbeille-fichier-" + Date.now(),
+      type: "Fichier" as const,
+      nom: deleted.documentName || "document",
+      supprimePar: { nom: userName, email: userEmail, fonction: (session?.user as any)?.role || "Utilisateur", avatar: userAvatar },
+      supprimeLe: new Date().toISOString(),
+      supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      sourceData: deleted,
+    };
+    if (process.env.MONGODB_URI) {
+      try {
+        await connectDB();
+        await Corbeille.findOneAndUpdate(
+          { corbeilleId: corbeilleItem.id },
+          {
+            corbeilleId: corbeilleItem.id, workspaceId: session?.user?.workspaceId || "", deletedBy: session?.user?.id || "",
+            type: "Fichier", nom: corbeilleItem.nom, supprimePar: corbeilleItem.supprimePar,
+            supprimeLe: new Date(corbeilleItem.supprimeLe), supprimeDefinitivementLe: new Date(corbeilleItem.supprimeDefinitivementLe),
+            sourceData: corbeilleItem.sourceData,
+          },
+          { upsert: true }
+        );
+      } catch (dbError) {
+        console.error("Corbeille MongoDB POST failed:", dbError);
+      }
+    }
+    try {
+      await MockCorbeille.create({ ...corbeilleItem, workspaceId: session?.user?.workspaceId || "", deletedBy: session?.user?.id || "" });
+    } catch (e) {
+      console.error("Corbeille MockCorbeille POST failed:", e);
+    }
+
     return NextResponse.json({ message: "Supprimé" });
   } catch (error) {
     console.error("Error deleting client document:", error);

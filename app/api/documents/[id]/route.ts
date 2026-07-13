@@ -4,7 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Document from "@/models/Document";
 import FileStore from "@/models/FileStore";
-import { MockDocument } from "@/lib/mock-db";
+import Corbeille from "@/models/Corbeille";
+import { MockDocument, MockCorbeille } from "@/lib/mock-db";
 import fs from "fs";
 import path from "path";
 
@@ -16,6 +17,43 @@ async function deleteFileStore(url: string) {
     await FileStore.findByIdAndDelete(match[1]);
   } catch (e) {
     console.warn("Could not delete from FileStore:", e);
+  }
+}
+
+async function addDocToCorbeille(doc: any, session: any) {
+  const userName = session?.user?.name || "Utilisateur inconnu";
+  const userEmail = session?.user?.email || "—";
+  const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+  const item = {
+    id: "corbeille-fichier-" + Date.now(),
+    type: "Fichier" as const,
+    nom: `${doc.nomDocument || "document"}.${doc.type || "pdf"}`,
+    supprimePar: { nom: userName, email: userEmail, fonction: (session?.user as any)?.role || "Utilisateur", avatar: userAvatar },
+    supprimeLe: new Date().toISOString(),
+    supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    sourceData: doc,
+  };
+  if (process.env.MONGODB_URI) {
+    try {
+      await connectDB();
+      await Corbeille.findOneAndUpdate(
+        { corbeilleId: item.id },
+        {
+          corbeilleId: item.id, workspaceId: session.user.workspaceId, deletedBy: session.user.id,
+          type: "Fichier", nom: item.nom, supprimePar: item.supprimePar,
+          supprimeLe: new Date(item.supprimeLe), supprimeDefinitivementLe: new Date(item.supprimeDefinitivementLe),
+          sourceData: item.sourceData,
+        },
+        { upsert: true }
+      );
+    } catch (dbError) {
+      console.error("Corbeille MongoDB POST failed:", dbError);
+    }
+  }
+  try {
+    await MockCorbeille.create({ ...item, workspaceId: session.user.workspaceId, deletedBy: session.user.id });
+  } catch (e) {
+    console.error("Corbeille MockCorbeille POST failed:", e);
   }
 }
 
@@ -33,6 +71,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       if (!document) return NextResponse.json({ message: "Document non trouvé" }, { status: 404 });
 
       if (document.url) await deleteFileStore(document.url);
+      await addDocToCorbeille(document.toObject?.() || document, session);
 
       await Document.findByIdAndDelete(id);
       return NextResponse.json({ message: "Document supprimé" });
@@ -42,6 +81,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       if (!deleted) return NextResponse.json({ message: "Document non trouvé" }, { status: 404 });
       
       if (deleted.url) await deleteFileStore(deleted.url);
+      await addDocToCorbeille(deleted, session);
       
       // Delete local file if needed
       if (deleted.url && deleted.url.startsWith('/uploads/')) {

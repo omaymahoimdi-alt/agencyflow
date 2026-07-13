@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { MockClient } from "@/lib/mock-db";
+import { connectDB } from "@/lib/mongodb";
+import Corbeille from "@/models/Corbeille";
+import { MockClient, MockCorbeille } from "@/lib/mock-db";
 import { logActivity } from "@/lib/activity";
 
 const validateClientServer = (data: any, existingClients: any[] = [], editingId?: string) => {
@@ -101,6 +103,43 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
+async function addToCorbeilleServer(session: any, body: { id: string; type: string; nom: string; sourceData?: any }) {
+  const userName = session?.user?.name || "Utilisateur inconnu";
+  const userEmail = session?.user?.email || "—";
+  const userAvatar = userName.split(" ").map((w: string) => w[0] ?? "").join("").toUpperCase().slice(0, 2) || "?";
+  const item = {
+    id: body.id,
+    type: body.type,
+    nom: body.nom,
+    supprimePar: { nom: userName, email: userEmail, fonction: (session?.user as any)?.role || "Utilisateur", avatar: userAvatar },
+    supprimeLe: new Date().toISOString(),
+    supprimeDefinitivementLe: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    sourceData: body.sourceData || null,
+  };
+  if (process.env.MONGODB_URI) {
+    try {
+      await connectDB();
+      await Corbeille.findOneAndUpdate(
+        { corbeilleId: item.id },
+        {
+          corbeilleId: item.id, workspaceId: session.user.workspaceId, deletedBy: session.user.id,
+          type: item.type, nom: item.nom, supprimePar: item.supprimePar,
+          supprimeLe: new Date(item.supprimeLe), supprimeDefinitivementLe: new Date(item.supprimeDefinitivementLe),
+          sourceData: item.sourceData,
+        },
+        { upsert: true }
+      );
+    } catch (dbError) {
+      console.error("Corbeille MongoDB POST failed:", dbError);
+    }
+  }
+  try {
+    await MockCorbeille.create({ ...item, workspaceId: session.user.workspaceId, deletedBy: session.user.id });
+  } catch (e) {
+    console.error("Corbeille MockCorbeille POST failed:", e);
+  }
+}
+
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
@@ -111,6 +150,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const client = await MockClient.findByIdAndDelete(id);
     if (!client) return NextResponse.json({ message: "Client non trouvé" }, { status: 404 });
     const deletedName = (client as any).nomSociete || "";
+
+    await addToCorbeilleServer(session, {
+      id: "corbeille-client-" + Date.now(),
+      type: "Client",
+      nom: deletedName,
+      sourceData: client,
+    });
+
     await logActivity({
       workspaceId: session.user.workspaceId,
       userId: session.user.id,

@@ -16,7 +16,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (process.env.MONGODB_URI) {
       try {
         await connectDB();
-        const deleted = await Corbeille.findOneAndDelete({ id });
+        const deleted = await Corbeille.findOneAndDelete({ corbeilleId: id });
         if (deleted) return NextResponse.json({ message: "Élément supprimé" });
       } catch (dbError) {
         console.error("Corbeille MongoDB DELETE failed, fallback to mock:", dbError);
