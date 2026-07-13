@@ -33,19 +33,7 @@ interface Membre {
 interface ProjectItem { _id: string; titre: string }
 interface TaskItem { _id: string; titre: string; projetId?: { _id: string; titre: string } | null }
 
-const INITIAL_ENTRIES: ChronoEntry[] = [
-  { id: "c1", tache: "Créer Dashboard", projet: "Boutique E-commerce Mode", membre: { prenom: "Mohamed", nom: "Salah", email: "m.salah@esprit.tn", role: "Développeur" }, startTime: "2026-06-29T09:15:00", endTime: null, dureeMinutes: 0, description: "Création du dashboard admin", date: "2026-06-29" },
-  { id: "c2", tache: "Optimisation API", projet: "CRM Entreprise", membre: { prenom: "Ahmed", nom: "Ben Ali", email: "ahmed.benali@esprit.tn", role: "Développeur" }, startTime: "2026-06-29T08:30:00", endTime: null, dureeMinutes: 0, description: "Optimisation des endpoints API REST", date: "2026-06-29" },
-  { id: "c3", tache: "Maquette UI", projet: "Application Mobile Santé", membre: { prenom: "Jane", nom: "Smith", email: "jane.smith@esprit.tn", role: "Designer" }, startTime: "2026-06-29T10:00:00", endTime: null, dureeMinutes: 0, description: "Maquette écran connexion", date: "2026-06-29" },
-  { id: "h1", tache: "Tests unitaires", projet: "Boutique E-commerce Mode", membre: { prenom: "Mohamed", nom: "Salah", email: "m.salah@esprit.tn", role: "Développeur" }, startTime: "2026-06-28T08:00:00", endTime: "2026-06-28T10:30:00", dureeMinutes: 150, description: "Tests modules de paiement", date: "2026-06-28" },
-  { id: "h2", tache: "Déploiement V2", projet: "CRM Entreprise", membre: { prenom: "Ahmed", nom: "Ben Ali", email: "ahmed.benali@esprit.tn", role: "Développeur" }, startTime: "2026-06-28T14:00:00", endTime: "2026-06-28T16:00:00", dureeMinutes: 120, description: "Déploiement V2.1 en production", date: "2026-06-28" },
-  { id: "h3", tache: "Revue de code", projet: "Application Mobile Santé", membre: { prenom: "Jane", nom: "Smith", email: "jane.smith@esprit.tn", role: "Designer" }, startTime: "2026-06-27T09:00:00", endTime: "2026-06-27T10:00:00", dureeMinutes: 60, description: "Revue PR #42", date: "2026-06-27" },
-  { id: "h4", tache: "Documentation API", projet: "Boutique E-commerce Mode", membre: { prenom: "Omayma", nom: "Hoimdi", email: "omayma.hoimdi@esprit.tn", role: "Chef de projet" }, startTime: "2026-06-27T11:00:00", endTime: "2026-06-27T12:30:00", dureeMinutes: 90, description: "Documentation technique API REST", date: "2026-06-27" },
-  { id: "h5", tache: "Intégration Stripe", projet: "Boutique E-commerce Mode", membre: { prenom: "Mohamed", nom: "Salah", email: "m.salah@esprit.tn", role: "Développeur" }, startTime: "2026-06-26T10:00:00", endTime: "2026-06-26T13:00:00", dureeMinutes: 180, description: "Intégration API Stripe", date: "2026-06-26" },
-  { id: "h6", tache: "Maquette UI", projet: "Application Mobile Santé", membre: { prenom: "Lina", nom: "Ben Amor", email: "lina.benamor@esprit.tn", role: "Designer" }, startTime: "2026-06-26T08:00:00", endTime: "2026-06-26T10:00:00", dureeMinutes: 120, description: "Écran paramètres utilisateur", date: "2026-06-26" },
-  { id: "h7", tache: "Audit sécurité", projet: "Système de Gestion des Stocks", membre: { prenom: "Karim", nom: "Aouadi", email: "karim.aouadi@esprit.tn", role: "Testeur" }, startTime: "2026-06-25T09:00:00", endTime: "2026-06-25T11:00:00", dureeMinutes: 120, description: "Audit de sécurité complet", date: "2026-06-25" },
-  { id: "h8", tache: "Configuration CI/CD", projet: "Refonte Site Web Entreprise", membre: { prenom: "Mohamed", nom: "Salah", email: "m.salah@esprit.tn", role: "Développeur" }, startTime: "2026-06-24T13:00:00", endTime: "2026-06-24T14:30:00", dureeMinutes: 90, description: "Configuration pipeline GitLab CI", date: "2026-06-24" },
-];
+const INITIAL_ENTRIES: ChronoEntry[] = [];
 
 const TABS = ["Chronomètres actifs", "Temps enregistrés", "Par projet", "Rapports"];
 
@@ -72,7 +60,17 @@ function getInitials(p: string, n: string): string {
 export default function ProductivitePage() {
   const [entries, setEntries] = useState<ChronoEntry[]>(INITIAL_ENTRIES);
   useEffect(() => {
-    try { const saved = localStorage.getItem("af_chronos"); if (saved) setEntries(JSON.parse(saved)); } catch {}
+    try {
+      const saved = localStorage.getItem("af_chronos");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((e: any) => e.id === "c1" || e.id === "h1")) {
+          localStorage.removeItem("af_chronos");
+        } else {
+          setEntries(parsed);
+        }
+      }
+    } catch {}
   }, []);
   useEffect(() => {
     if (entries === INITIAL_ENTRIES) return;
