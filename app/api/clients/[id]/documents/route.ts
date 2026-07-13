@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { connectDB } from "@/lib/mongodb";
+import FileStore from "@/models/FileStore";
 import { MockClientDocument } from "@/lib/mock-db";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
@@ -27,14 +29,50 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ message: "Fichier requis" }, { status: 400 });
     }
 
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return NextResponse.json({ message: "Fichier trop volumineux (max 5MB)" }, { status: 400 });
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Store in MongoDB via FileStore
+    if (process.env.MONGODB_URI) {
+      try {
+        await connectDB();
+        const base64 = buffer.toString("base64");
+        const fileDoc = await FileStore.create({
+          originalName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          data: base64,
+          size: file.size,
+          workspaceId: session?.user?.workspaceId || "",
+          uploadedBy: session?.user?.id || "",
+        });
+        const fileUrl = `/api/files/${fileDoc._id}`;
+        const document = await MockClientDocument.create({
+          clientId: id,
+          documentName: file.name,
+          documentType: file.type || "application/octet-stream",
+          fileUrl,
+          fileSize: file.size,
+          uploadedBy: session?.user?.id || "",
+          uploadedByName: session?.user?.name || "",
+          uploadedByEmail: session?.user?.email || "",
+        });
+        return NextResponse.json(document, { status: 201 });
+      } catch (dbError) {
+        console.error("FileStore upload failed:", dbError);
+        return NextResponse.json({ message: "Erreur lors de l'upload" }, { status: 500 });
+      }
+    }
+
+    // Fallback to local filesystem
     const uploadDir = path.join(process.cwd(), "public", "uploads", "clients", id);
     await mkdir(uploadDir, { recursive: true });
-
     const fileName = `${Date.now()}-${file.name}`;
     const filePath = path.join(uploadDir, fileName);
-    const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(filePath, buffer);
-
     const fileUrl = `/uploads/clients/${id}/${fileName}`;
 
     const document = await MockClientDocument.create({
@@ -77,7 +115,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (!body._id) {
       return NextResponse.json({ message: "ID requis" }, { status: 400 });
     }
-    await MockClientDocument.findByIdAndDelete(body._id);
+    const deleted = await MockClientDocument.findByIdAndDelete(body._id);
     return NextResponse.json({ message: "Supprimé" });
   } catch (error) {
     console.error("Error deleting client document:", error);
