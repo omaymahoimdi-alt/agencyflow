@@ -60,6 +60,14 @@ export default function CorbeillePage() {
 
   useEffect(() => {
     getCorbeilleItems().then(setItems);
+    const onVisible = () => { if (!document.hidden) getCorbeilleItems().then(setItems); };
+    const onFocus = () => getCorbeilleItems().then(setItems);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   useEffect(() => {

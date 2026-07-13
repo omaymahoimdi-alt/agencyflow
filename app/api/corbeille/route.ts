@@ -7,7 +7,23 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     const workspaceId = session?.user?.workspaceId;
-    const items = await MockCorbeille.find(workspaceId);
+    let items = await MockCorbeille.find(workspaceId);
+    // Fallback direct DataStore query if mock-db returned empty
+    if (items.length === 0 && process.env.MONGODB_URI) {
+      try {
+        const { default: DataStore } = await import("@/models/DataStore");
+        const { connectDB } = await import("@/lib/mongodb");
+        await connectDB();
+        const doc = await DataStore.findOne({ key: "data/corbeille.json" }).lean();
+        if (doc && Array.isArray(doc.value)) {
+          let all = doc.value;
+          if (workspaceId) all = all.filter((i: any) => i.workspaceId === workspaceId);
+          items = all.sort((a: any, b: any) => new Date(b.supprimeLe).getTime() - new Date(a.supprimeLe).getTime());
+        }
+      } catch (e) {
+        console.error("Corbeille DataStore fallback failed:", e);
+      }
+    }
     return NextResponse.json(items);
   } catch {
     return NextResponse.json([], { status: 200 });
