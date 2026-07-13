@@ -3,16 +3,21 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Document from "@/models/Document";
+import FileStore from "@/models/FileStore";
 import { MockDocument } from "@/lib/mock-db";
-import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import path from "path";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+async function deleteFileStore(url: string) {
+  const match = url.match(/^\/api\/files\/([a-f0-9]+)$/i);
+  if (!match) return;
+  try {
+    await connectDB();
+    await FileStore.findByIdAndDelete(match[1]);
+  } catch (e) {
+    console.warn("Could not delete from FileStore:", e);
+  }
+}
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,14 +32,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       const document = await Document.findById(id);
       if (!document) return NextResponse.json({ message: "Document non trouvé" }, { status: 404 });
 
-      // Delete from Cloudinary if publicId exists
-      if (document.publicId) {
-        try {
-          await cloudinary.uploader.destroy(document.publicId, { resource_type: "auto" });
-        } catch (e) {
-          console.warn("Could not delete from Cloudinary:", e);
-        }
-      }
+      if (document.url) await deleteFileStore(document.url);
 
       await Document.findByIdAndDelete(id);
       return NextResponse.json({ message: "Document supprimé" });
@@ -43,17 +41,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       const deleted = await MockDocument.findByIdAndDelete(id);
       if (!deleted) return NextResponse.json({ message: "Document non trouvé" }, { status: 404 });
       
-      // Delete from Cloudinary if publicId exists
-      if (deleted.publicId) {
-        try {
-          await cloudinary.uploader.destroy(deleted.publicId, { resource_type: "auto" });
-        } catch (e) {
-          console.warn("Could not delete from Cloudinary:", e);
-        }
-      }
+      if (deleted.url) await deleteFileStore(deleted.url);
       
       // Delete local file if needed
-      if (deleted.url && deleted.url.startsWith('/')) {
+      if (deleted.url && deleted.url.startsWith('/uploads/')) {
         const localPath = path.join(process.cwd(), "public", deleted.url);
         if (fs.existsSync(localPath)) {
           try {

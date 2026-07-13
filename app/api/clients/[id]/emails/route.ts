@@ -48,8 +48,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           html: body.message.replace(/\n/g, "<br>"),
         };
         if (body.attachmentUrl) {
-          if (body.attachmentUrl.startsWith("http")) {
-            const response = await fetch(body.attachmentUrl);
+          let fileUrl = body.attachmentUrl;
+          if (fileUrl.startsWith("/api/")) {
+            const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+            fileUrl = `${baseUrl}${fileUrl}`;
+          }
+          if (fileUrl.startsWith("http")) {
+            const response = await fetch(fileUrl);
             if (response.ok) {
               const arrayBuffer = await response.arrayBuffer();
               mailOptions.attachments = [{
@@ -58,7 +63,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
               }];
             }
           } else {
-            const attachmentPath = path.join(process.cwd(), "public", body.attachmentUrl);
+            const attachmentPath = path.join(process.cwd(), "public", fileUrl);
             if (fs.existsSync(attachmentPath)) {
               mailOptions.attachments = [{
                 filename: body.attachmentName || path.basename(body.attachmentUrl),
